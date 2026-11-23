@@ -6,7 +6,7 @@
 
 ## 下载
 
-到 [Releases](https://github.com/mingmu12138/sui-jing/releases) 下载最新版 **v1.9.7**：
+到 [Releases](https://github.com/mingmu12138/flint-mirror/releases) 下载最新版 **v1.9.7**：
 
 | 文件 | 大小 | 说明 |
 | --- | --- | --- |
