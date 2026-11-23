@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv313/
+venv/
+
+# 打包产物（体积巨大，走 Releases 分发）
+build/
+dist/
+分发版/
+_android/
+_nsis/
+_tmp_scrcpy/
+_gh/
+*.exe
+*.zip
+*.apk
+*.7z
+*.msi
+
+# 第三方二进制（qBittorrent / scrcpy / adb，自行从官方获取，见 README）
+bundled/
+
+# 运行数据 / 缓存 / 日志
+logs/
+网页登录/
+网页数据/
+音乐数据/
+素材/
+分享/
+收到/
+_cast_shots/
+_gm_shots/
+delta_cache.json
+
+# 个人配置（含本机路径）
+config.json
+托盘图标备份_*.reg
+
+# 临时脚本与构建日志
+_patch_*.py
+_t_*.py
+_tmp_*
+_build_*.log
+*.log

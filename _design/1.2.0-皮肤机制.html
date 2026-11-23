@@ -1,0 +1,108 @@
+<html style="margin:0;padding:0;">
+<div style="background-color:transparent;box-sizing:border-box;padding:2px;font-family:'Roboto','PingFang SC','Segoe UI',Arial,sans-serif;color:#1A1B1C;">
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+    <div style="flex:1 1 110px;min-width:0;">
+      <div style="font-size:11px;color:#6B7280;">界面里的颜色引用</div>
+      <div style="font-size:19px;font-weight:600;color:#1A1B1C;margin-top:2px;">260 <span style="font-size:11px;color:#6B7280;font-weight:400;">处</span></div>
+    </div>
+    <div style="flex:1 1 110px;min-width:0;">
+      <div style="font-size:11px;color:#6B7280;">不同色值</div>
+      <div style="font-size:19px;font-weight:600;color:#1A1B1C;margin-top:2px;">116 <span style="font-size:11px;color:#6B7280;font-weight:400;">种</span></div>
+    </div>
+    <div style="flex:1 1 110px;min-width:0;">
+      <div style="font-size:11px;color:#6B7280;">主青色占</div>
+      <div style="font-size:19px;font-weight:600;color:#1A1B1C;margin-top:2px;">31 <span style="font-size:11px;color:#6B7280;font-weight:400;">处</span></div>
+    </div>
+    <div style="flex:1 1 110px;min-width:0;">
+      <div style="font-size:11px;color:#6B7280;">散在写死的内联里</div>
+      <div style="font-size:19px;font-weight:600;color:#0FA08A;margin-top:2px;">63 <span style="font-size:11px;color:#6B7280;font-weight:400;">处</span></div>
+    </div>
+  </div>
+  <div style="font-size:11.5px;color:#6B7280;margin-bottom:14px;">实测自当前代码：122 行样式表里有 106 处，剩下 152 处散在 88 个 setStyleSheet 调用里。换皮肤要全改，难点就在那 63 处内联。</div>
+
+  <svg viewBox="0 0 880 402" style="width:100%;height:auto;max-width:880px;display:block;" role="img" aria-label="皮肤机制数据流：皮肤文件经 token 表分两路渲染到界面">
+    <defs>
+      <marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
+        <path d="M0 0 L7 4.5 L0 9 z" fill="#0FA08A"/>
+      </marker>
+    </defs>
+
+    <text x="16" y="20" font-size="11" fill="#9AA0AA">↓ 数据流向</text>
+
+    <rect x="300" y="30" width="280" height="56" rx="12" fill="rgba(15,160,138,0.07)" stroke="rgba(15,160,138,0.35)" stroke-width="1"/>
+    <text x="440" y="56" font-size="13.5" font-weight="600" fill="#1A1B1C" text-anchor="middle">themes/*.json</text>
+    <text x="440" y="74" font-size="11" fill="#6B7280" text-anchor="middle">一套皮肤 = 颜色 + 圆角 + 字号</text>
+
+    <path d="M440 86 L440 104" fill="none" stroke="#0FA08A" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="200" y="106" width="480" height="68" rx="12" fill="#FFFFFF" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>
+    <text x="440" y="128" font-size="13.5" font-weight="600" fill="#1A1B1C" text-anchor="middle">token 表 · 建议 20 个按用途命名的名字</text>
+    <rect x="226" y="138" width="62" height="22" rx="6" fill="rgba(0,0,0,0.04)"/>
+    <text x="257" y="153" font-size="10.5" fill="#3A3F46" text-anchor="middle">bg-0</text>
+    <rect x="292" y="138" width="62" height="22" rx="6" fill="rgba(0,0,0,0.04)"/>
+    <text x="323" y="153" font-size="10.5" fill="#3A3F46" text-anchor="middle">bg-1</text>
+    <rect x="358" y="138" width="62" height="22" rx="6" fill="rgba(0,0,0,0.04)"/>
+    <text x="389" y="153" font-size="10.5" fill="#3A3F46" text-anchor="middle">fg-1</text>
+    <rect x="424" y="138" width="76" height="22" rx="6" fill="rgba(15,160,138,0.16)"/>
+    <text x="462" y="153" font-size="10.5" fill="#0B7A69" text-anchor="middle">accent</text>
+    <rect x="504" y="138" width="66" height="22" rx="6" fill="rgba(0,0,0,0.04)"/>
+    <text x="537" y="153" font-size="10.5" fill="#3A3F46" text-anchor="middle">line-1</text>
+    <rect x="574" y="138" width="60" height="22" rx="6" fill="rgba(0,0,0,0.04)"/>
+    <text x="604" y="153" font-size="10.5" fill="#3A3F46" text-anchor="middle">ok</text>
+    <text x="644" y="154" font-size="10" fill="#9AA0AA">…</text>
+
+    <path d="M440 174 L440 192" fill="none" stroke="#0FA08A" stroke-width="1.5"/>
+    <path d="M240 192 L640 192" fill="none" stroke="#0FA08A" stroke-width="1.5"/>
+    <path d="M240 192 L240 206" fill="none" stroke="#0FA08A" stroke-width="1.5" marker-end="url(#ar)"/>
+    <path d="M640 192 L640 206" fill="none" stroke="#0FA08A" stroke-width="1.5" marker-end="url(#ar)"/>
+    <text x="440" y="182" font-size="10.5" fill="#6B7280" text-anchor="middle">分两路铺满界面</text>
+
+    <rect x="100" y="208" width="280" height="88" rx="10" fill="#FFFFFF" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>
+    <text x="240" y="232" font-size="12.5" font-weight="600" fill="#1A1B1C" text-anchor="middle">① 样式表走模板</text>
+    <text x="240" y="253" font-size="11" fill="#6B7280" text-anchor="middle">把写死的色值换成 @accent 占位</text>
+    <text x="240" y="271" font-size="11" fill="#6B7280" text-anchor="middle">启动时渲染一次，122 行全部覆盖</text>
+    <text x="240" y="289" font-size="10.5" fill="#0FA08A" text-anchor="middle">改动集中，最省事</text>
+
+    <rect x="500" y="208" width="280" height="88" rx="10" fill="#FFFFFF" stroke="rgba(0,0,0,0.10)" stroke-width="1"/>
+    <text x="640" y="232" font-size="12.5" font-weight="600" fill="#1A1B1C" text-anchor="middle">② 内联走一层翻译</text>
+    <text x="640" y="253" font-size="11" fill="#6B7280" text-anchor="middle">63 处写死的色值自动映射成 token</text>
+    <text x="640" y="271" font-size="11" fill="#6B7280" text-anchor="middle">不必一处一处手改，先跑起来</text>
+    <text x="640" y="289" font-size="10.5" fill="#0FA08A" text-anchor="middle">做完这步就能换肤</text>
+
+    <path d="M240 296 L240 322 L400 322" fill="none" stroke="#0FA08A" stroke-width="1.5"/>
+    <path d="M640 296 L640 322 L480 322" fill="none" stroke="#0FA08A" stroke-width="1.5"/>
+    <path d="M440 322 L440 338" fill="none" stroke="#0FA08A" stroke-width="1.5" marker-end="url(#ar)"/>
+
+    <rect x="180" y="340" width="520" height="52" rx="12" fill="rgba(15,160,138,0.07)" stroke="rgba(15,160,138,0.35)" stroke-width="1"/>
+    <text x="440" y="361" font-size="13" font-weight="600" fill="#1A1B1C" text-anchor="middle">主窗口 / 设置页 / 对话框 / 帧率悬浮窗</text>
+    <text x="440" y="379" font-size="10.5" fill="#6B7280" text-anchor="middle">一次改动，所有界面同时变色</text>
+  </svg>
+
+  <div style="margin-top:20px;font-size:12px;color:#6B7280;">落地顺序 · 三步</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;">
+    <div style="flex:1 1 240px;min-width:0;border-left:3px solid #0FA08A;padding:2px 0 2px 12px;">
+      <div style="font-size:12px;font-weight:600;color:#0FA08A;">第 1 步 · 抽 token</div>
+      <div style="font-size:13px;color:#1A1B1C;margin-top:5px;line-height:1.6;">260 处、116 种色值归并成 20 个按用途命名的名字。这一步是纯整理，界面看起来一模一样，但之后所有颜色有了统一来源。</div>
+    </div>
+    <div style="flex:1 1 240px;min-width:0;border-left:3px solid #0FA08A;padding:2px 0 2px 12px;">
+      <div style="font-size:12px;font-weight:600;color:#0FA08A;">第 2 步 · 接通翻译层</div>
+      <div style="font-size:13px;color:#1A1B1C;margin-top:5px;line-height:1.6;">样式表改模板、内联挂翻译。做完这一步，改一行 token 就能让整个软件换色 —— 这时候已经可以拿它当皮肤用了，只是还没有切换入口。</div>
+    </div>
+    <div style="flex:1 1 240px;min-width:0;border-left:3px solid #0FA08A;padding:2px 0 2px 12px;">
+      <div style="font-size:12px;font-weight:600;color:#0FA08A;">第 3 步 · 上入口</div>
+      <div style="font-size:13px;color:#1A1B1C;margin-top:5px;line-height:1.6;">顶栏右侧那个小衣服按钮（纯图标，不占按钮排），点开弹皮肤面板；设置页再加一栏「外观」管完整的事：选、导入、恢复默认。</div>
+    </div>
+  </div>
+
+  <div style="margin-top:18px;padding:12px 14px;background:rgba(0,0,0,0.025);border:1px solid rgba(0,0,0,0.08);border-radius:12px;">
+    <div style="font-size:11.5px;color:#6B7280;margin-bottom:7px;">三条边界，先定死才做得完</div>
+    <div style="font-size:13px;line-height:1.75;color:#1A1B1C;">
+      <div><span style="color:#0FA08A;font-weight:600;">·</span> 皮肤只换配色、圆角、字号，不动布局。一动布局，每套皮肤就得重新排一次版，五套就是五个版本。</div>
+      <div><span style="color:#0FA08A;font-weight:600;">·</span> 状态色固定：成功绿、报错红、警告黄不跟皮肤变。否则「红 = 出错」的语感会乱掉。</div>
+      <div><span style="color:#0FA08A;font-weight:600;">·</span> 皮肤文件坏了或字段缺失，自动回落内置那套青，绝不留白屏。</div>
+    </div>
+  </div>
+
+</div>
+</html>
