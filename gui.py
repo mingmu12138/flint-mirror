@@ -1629,7 +1629,7 @@ CHANGELOG = [
             "名单里本来就手动加过同一个程序的，不会冒出第二张卡，官网地址直接补到原来那条",
             "不会一直扫盘：只在「这份配置还没扫过」时扫一次，后台线程跑完就结束，不常驻不轮询；"
             "同一个名字 24 小时内不重复扫",
-            "新增：工具页顶部「刷新」按钮，手动再扫一遍；「⋯」里也有「重新扫描本机已装工具」",
+            "新增：工具页顶部「刷新」按钮，手动再扫一遍（只留这一个重扫入口，「⋯」里不再重复放一条）",
             "修：这一页之前断了三个版本没写（v1.10.0 ~ v1.10.2），点开还停在 11-23 的 v1.9.7，现在一起补回来",
         ],
     ),
@@ -12392,10 +12392,7 @@ class MainWindow(QtWidgets.QWidget):
         a.triggered.connect(self.export_mods)
         b = m.addAction("导入工具清单…")
         b.triggered.connect(self.import_mods)
-        m.addSeparator()
-        c = m.addAction("重新扫描本机已装工具")
-        c.setToolTip("再扫一遍注册表和常见安装目录，认出哪个就从官网入口换成能直接启动的")
-        c.triggered.connect(self.rescan_tools)
+        # 重新扫描只留顶部「刷新」一个入口，这里不再重复
         m.exec(self.mod_menu_btn.mapToGlobal(self.mod_menu_btn.rect().bottomLeft()))
 
     def rescan_tools(self, *_a) -> None:
@@ -15443,7 +15440,7 @@ class MainWindow(QtWidgets.QWidget):
         if not getattr(self, "_tools_scanned", False):
             self._tools_scanned = True
             # 只在"这份配置还从没扫过"时扫一次（首次装好/刚升级）。
-            # 之后不再自动扫盘，想识别新装的工具就去「⋯」→ 重新扫描本机已装工具。
+            # 之后不再自动扫盘，想识别新装的工具就点工具页顶部「刷新」。
             if not self.cfg.scan_stamp:
                 QTimer.singleShot(1500, self.scan_tools_async)
         # 窗口真正上屏时把圆角按配置补一次：
