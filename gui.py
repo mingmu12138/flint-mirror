@@ -102,7 +102,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.10.2"
+APP_VERSION = "v1.10.3"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -754,9 +754,15 @@ def _favicon_file(host: str) -> Optional[Path]:
 
 
 def _try_favicon(mod: Mod) -> Optional[QtGui.QIcon]:
-    if mod.kind not in (KIND_URL, KIND_REMOTE):
+    """官网图标：网址/三方工具用 path，本机识别出来的工具用 home 里的官网地址。"""
+    url = ""
+    if mod.kind in (KIND_URL, KIND_REMOTE):
+        url = mod.path or ""
+    elif getattr(mod, "home", ""):
+        url = mod.home
+    if not url:
         return None
-    host = (urllib.parse.urlparse(mod.path or "").netloc or "").strip()
+    host = (urllib.parse.urlparse(url).netloc or "").strip()
     if not host:
         return None
     p = _favicon_file(host)
@@ -851,7 +857,8 @@ def _fallback_icon(name: str, color: str = "#20ffe0") -> QtGui.QIcon:
 def shell_icon(mod: Mod) -> QtGui.QIcon:
     """三方工具 / 网址先看官网图标缓存；程序取自身图标；都取不到画首字母方块。"""
     global _ICON_PROVIDER
-    key = ("url:" if mod.kind in (KIND_URL, KIND_REMOTE) else "file:") + mod.path.lower()
+    is_url_like = mod.kind in (KIND_URL, KIND_REMOTE) or bool(getattr(mod, "home", ""))
+    key = ("url:" if is_url_like else "file:") + (getattr(mod, "home", "") or mod.path).lower()
     if key in _ICON_CACHE:
         return _ICON_CACHE[key]
 
@@ -1083,6 +1090,10 @@ class ModTile(QtWidgets.QFrame):
         elif err:
             txt, color = "启动失败", "#ff6b6b"
             tip = err
+        elif getattr(self.mod, "home", ""):
+            # 这条是启动时从本机认出来的，不是从官网重新下的
+            txt, color = "已安装", "#7bd4a8"
+            tip = "本机已装好，点一下直接启动"
         else:
             txt, color = "未运行", "#5f6878"
 
@@ -1198,8 +1209,19 @@ class ModCard(QtWidgets.QFrame):
         self.args_edit.editingFinished.connect(self._on_args)
         row2.addWidget(self.args_edit, 1)
 
-        self.note_label = QtWidgets.QLabel(self.mod.note)
+        self.note_label = QtWidgets.QLabel()
         self.note_label.setObjectName("Small")
+        home = getattr(self.mod, "home", "")
+        if home:
+            # 本机识别出来的工具：正文位置留给「打开官网」，随时能回去看官网
+            self.note_label.setTextFormat(Qt.RichText)
+            self.note_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+            self.note_label.setOpenExternalLinks(True)
+            self.note_label.setText(
+                '本机已装 · <a href="%s" style="color:#8a7bd4">打开官网</a>' % home
+            )
+        else:
+            self.note_label.setText(self.mod.note)
         row2.addWidget(self.note_label)
         outer.addLayout(row2)
 
@@ -1257,6 +1279,8 @@ class ModCard(QtWidgets.QFrame):
             raw = "官网 · " + host + ("（有直链，可直接下载）" if self.mod.dl else "（自己下载）")
         elif self.mod.kind != KIND_URL and not Path(raw).is_absolute():
             raw = "内置 · " + raw.replace("/", chr(92))
+        if getattr(self.mod, "home", "") and self.mod.kind == KIND_EXE:
+            raw = "本机已装 · " + raw
         self._path_raw = raw
         self.path_label.setToolTip(raw)
         self._elide_path()
@@ -1293,6 +1317,10 @@ class ModCard(QtWidgets.QFrame):
             self.status_label.setText("● 启动失败")
             self.status_label.setStyleSheet("color:#ff6b6b; font-size:11px;")
             self.status_label.setToolTip(err)
+        elif getattr(self.mod, "home", ""):
+            self.status_label.setText("● 已安装")
+            self.status_label.setStyleSheet("color:#7bd4a8; font-size:11px;")
+            self.status_label.setToolTip("本机已装好，点「启动」直接开")
         else:
             self.status_label.setText("● 未运行")
             self.status_label.setStyleSheet("color:#5f6878; font-size:11px;")
@@ -11987,6 +12015,13 @@ class MainWindow(QtWidgets.QWidget):
         # 一键全起没有意义，也容易误开一堆东西。要全起去模组页。
         self.launch_all_btn = None
 
+        # 刷新：手动再扫一遍本机已装的三方工具（平时不会自动扫盘）
+        self.scan_btn = QtWidgets.QPushButton("刷新")
+        self.scan_btn.setObjectName("Ghost")
+        self.scan_btn.setToolTip("重新扫一遍本机已装的三方工具：注册表卸载表 + 常见安装目录")
+        self.scan_btn.clicked.connect(self.rescan_tools)
+        mod_head.addWidget(self.scan_btn)
+
         add_btn = QtWidgets.QPushButton("+ 添加工具")
         add_btn.setObjectName("Ghost")
         add_btn.clicked.connect(self.add_mod)
@@ -12304,7 +12339,68 @@ class MainWindow(QtWidgets.QWidget):
         a.triggered.connect(self.export_mods)
         b = m.addAction("导入工具清单…")
         b.triggered.connect(self.import_mods)
+        m.addSeparator()
+        c = m.addAction("重新扫描本机已装工具")
+        c.setToolTip("再扫一遍注册表和常见安装目录，认出哪个就从官网入口换成能直接启动的")
+        c.triggered.connect(self.rescan_tools)
         m.exec(self.mod_menu_btn.mapToGlobal(self.mod_menu_btn.rect().bottomLeft()))
+
+    def rescan_tools(self, *_a) -> None:
+        """手动再扫一遍：装完新工具不用重启软件。"""
+        if not any(m.kind == KIND_REMOTE for m in self.cfg.mods):
+            self.toast("列表里已经没有待识别的三方工具了")
+            return
+        self.toast("正在扫本机已装的工具…")
+        self.scan_tools_async(force=True)
+
+    def scan_tools_async(self, force: bool = False) -> None:
+        """后台线程去探测，结果回主线程套用（启动时那一次也走这条路）。
+
+        force=False 时按 scan_stamp 过滤：同一个工具 24 小时内扫过就不再翻，
+        检查是不是装了新工具这种事情交给手动按钮，不自动扫盘。
+        """
+        import threading
+        import time as _time
+
+        all_names = [m.name for m in self.cfg.mods if m.kind == KIND_REMOTE]
+        if not all_names:
+            return
+        now = _time.time()
+        if force:
+            pending = list(all_names)
+        else:
+            pending = [
+                n for n in all_names
+                if now - float(self.cfg.scan_stamp.get(n, 0.0)) > 24 * 3600
+            ]
+        if not pending:
+            return
+
+        def work() -> None:
+            try:
+                from core.tools_detect import detect_installed
+
+                hits = detect_installed(pending)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("扫描本机已装工具失败：%s", exc)
+                return
+            QTimer.singleShot(0, lambda: self._apply_scan(hits, pending, now))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_scan(self, hits: dict, scanned: list, stamp: float) -> None:
+        for name in scanned:
+            self.cfg.scan_stamp[name] = stamp
+        try:
+            names = self.cfg.apply_installed_tools(hits)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("套用扫描结果失败：%s", exc)
+            return
+        self.cfg.save()
+        if not names:
+            return
+        self.rebuild_mods()
+        self.toast("认出 %d 个本机已装的工具：%s" % (len(names), "、".join(names)))
 
     def export_mods(self, *_a) -> None:
         """只导自己加的那些：内置的本来就随包走，搬过去反而添乱。"""
@@ -15282,6 +15378,12 @@ class MainWindow(QtWidgets.QWidget):
         if not self._hotkeys_registered and self.cfg.hotkey_enabled:
             QTimer.singleShot(0, self.register_hotkeys)
         QTimer.singleShot(300, self._ensure_target_supported)
+        if not getattr(self, "_tools_scanned", False):
+            self._tools_scanned = True
+            # 只在"这份配置还从没扫过"时扫一次（首次装好/刚升级）。
+            # 之后不再自动扫盘，想识别新装的工具就去「⋯」→ 重新扫描本机已装工具。
+            if not self.cfg.scan_stamp:
+                QTimer.singleShot(1500, self.scan_tools_async)
         # 窗口真正上屏时把圆角按配置补一次：
         # 构造期调的 set_window_mode 那会儿窗口还没成形，裁出来是空的。
         try:

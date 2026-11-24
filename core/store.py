@@ -108,6 +108,8 @@ class Mod:
     kind: str = KIND_EXE
     # 三方工具的直链下载地址（只有 kind == remote 用得上；空 = 只挂官网）
     dl: str = ""
+    # 这条是本机识别到的三方工具时，这里留原来的官网地址（右键还能打开官网）
+    home: str = ""
     args: List[str] = field(default_factory=list)
     enabled: bool = True
     autostart: bool = False
@@ -158,6 +160,7 @@ class Mod:
             "path": self.path,
             "kind": self.kind,
             "dl": self.dl,
+            "home": self.home,
             "args": list(self.args),
             "enabled": bool(self.enabled),
             "autostart": bool(self.autostart),
@@ -174,6 +177,7 @@ class Mod:
             path=path,
             kind=str(d.get("kind") or guess_kind(path)),
             dl=str(d.get("dl") or ""),
+            home=str(d.get("home") or ""),
             args=list(d.get("args") or []),
             enabled=bool(d.get("enabled", True)),
             autostart=bool(d.get("autostart", False)),
@@ -801,6 +805,16 @@ class Config:
         self.page_mods_seeded = bool(raw.get("page_mods_seeded", False))
         # 推荐三方工具同样只播种一次
         self.tools_seeded = bool(raw.get("tools_seeded", False))
+        # 每个三方工具上次扫描的 Unix 时间：同一个名字 24 小时内不重复扫。
+        # 自动扫描本身只在"这份配置从没扫过"时跑一次，平时靠手动按钮。
+        stamp = raw.get("scan_stamp") or {}
+        self.scan_stamp: Dict[str, float] = {}
+        if isinstance(stamp, dict):
+            for k, v in stamp.items():
+                try:
+                    self.scan_stamp[str(k)] = float(v)
+                except (TypeError, ValueError):
+                    continue
         fpos = raw.get("fps_pos") or []
         self.fps_pos = [int(fpos[0]), int(fpos[1])] if isinstance(fpos, (list, tuple)) and len(fpos) == 2 else []
         pos = raw.get("hud_pos") or []
@@ -832,6 +846,66 @@ class Config:
                 )
             )
         self.tools_seeded = True
+
+    def scan_installed_tools(self) -> List[str]:
+        """扫一遍本机，把已经装好的三方工具就地变成正常工具（点一下直接启动）。
+
+        探测本身只读注册表和目录，但别的机器盘多、盘慢，所以界面那边
+        会在后台线程调 detect_installed()，再回主线程用 apply_installed_tools()。
+        """
+        from core.tools_detect import detect_installed
+
+        pending = [m for m in self.mods if m.kind == KIND_REMOTE]
+        if not pending:
+            return []
+        try:
+            hits = detect_installed([m.name for m in pending])
+        except Exception:  # noqa: BLE001  探测失败就保持原样，不影响启动
+            return []
+        return self.apply_installed_tools(hits)
+
+    def apply_installed_tools(self, hits: Dict[str, str]) -> List[str]:
+        """把探测结果落到配置上。hits = {显示名: exe 路径}。只在主线程调。"""
+        if not hits:
+            return []
+        changed: List[str] = []
+        for mod in list(self.mods):
+            if mod.kind != KIND_REMOTE:
+                continue
+            exe = hits.get(mod.name)
+            if not exe:
+                continue
+            try:
+                if not Path(exe).exists():
+                    continue
+            except OSError:
+                continue
+            # 列表里本来就手动加过同一个程序（比如「图吧工具箱2024」）：
+            # 不重复建卡，把官网地址补到那条身上就行
+            norm = os.path.normcase(str(Path(exe)))
+            dup = None
+            for other in self.mods:
+                if other.id == mod.id or other.kind != KIND_EXE:
+                    continue
+                try:
+                    if os.path.normcase(str(Path(other.resolved))) == norm:
+                        dup = other
+                        break
+                except OSError:
+                    continue
+            if dup is not None:
+                if not dup.home:
+                    dup.home = mod.home or mod.path
+                self.mods.remove(mod)
+                changed.append(mod.name)
+                continue
+            if not mod.home:
+                mod.home = mod.path
+            mod.path = str(Path(exe))
+            mod.kind = KIND_EXE
+            mod.dl = ""
+            changed.append(mod.name)
+        return changed
 
     def _migrate_bundled(self) -> None:
         """内置模组存在时，把指桌面上旧路径的同名模组切到内置副本，缺了就补一条。"""
@@ -956,6 +1030,7 @@ class Config:
             "bar_side": self.bar_side,
             "page_mods_seeded": bool(self.page_mods_seeded),
             "tools_seeded": bool(self.tools_seeded),
+            "scan_stamp": dict(self.scan_stamp),
             "mods": [m.to_dict() for m in self.mods],
             "rules": [r.to_dict() for r in self.rules],
         }
