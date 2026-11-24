@@ -18,13 +18,13 @@
 
 三条硬规则：
 
-1. **包里不要放 exe**（`kind=package` 时）。放 exe 的只有 `kind=external`，那是包装现成程序用的。
+1. **包里原则上不放 exe**。确实要随包带的，只能放 `assets\bin\`（单个文件超过 60MB 会告警），并且 manifest 必须申请 `shell` 权限，让用户装之前看得到「启动外部程序」。整包包装现成程序的，走 `kind=external`。
 2. **manifest 必须在包的最外层**。如果压成了 `我的模组/manifest.json`，安装器会自动往下找一层，但别依赖这个。
 3. **文件编码统一 UTF-8**（manifest 允许带 BOM）。
 
-**依赖自己带**：模组要用第三方纯 Python 库，就把整份塞进 `assets\lib\`（比如 `assets\lib\yt_dlp\`），宿主加载这个模组时会自动把 `assets\lib` 加进 `sys.path`，`main.py` 里直接 `import yt_dlp` 就行——不用自己改 `sys.path`，也不占安装包体积。卸载/退出时宿主自动摘掉，不会串到别的模组。
+**依赖自己带**：模组要用第三方纯 Python 库，就把整份塞进 `assets\lib\`（比如 `assets\lib\yt_dlp\`，目录名写成 `assets\pylibs\` 宿主也认），宿主加载这个模组时会自动把该目录加进 `sys.path`，`main.py` 里直接 `import yt_dlp` 就行——不用自己改 `sys.path`，也不占安装包体积。卸载/退出时宿主自动摘掉，不会串到别的模组。
 
-要 exe 的依赖（ffmpeg、ffprobe 这类）不能进包：要么让它躺在宿主 `bundled\` 里由你指路径，要么首次使用时提示用户放到自己的 `host.paths.data_dir` 下，并在文档里写清放哪儿。
+要 exe 的依赖（ffmpeg、ffprobe 这类）优先让用户或模组自己解决：查找顺序是 `data_dir\bin\` → 系统 PATH → 包内 `assets\bin\`，找到后先用 `host.shell.capture([exe, "-version"], 15)` 验返回码 0；都没有就给用户三条人话指引（放哪、从哪下、放好后重启模组）。
 
 ---
 
