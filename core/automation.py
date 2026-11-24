@@ -102,9 +102,9 @@ def preview(action: "Action", cfg: Config) -> str:
     if action.type in (ACTION_MOD_START, ACTION_MOD_STOP):
         mod = cfg.get_mod(action.value)
         if mod is None:
-            return "启停模组（找不到这个模组，会跳过）"
+            return "启停工具（找不到这个工具，会跳过）"
         if not mod.enabled:
-            return "启停模组（这个模组已被屏蔽，会跳过）"
+            return "启停工具（这个工具已被屏蔽，会跳过）"
         verb = "启动" if action.type == ACTION_MOD_START else "停止"
         return f"{verb} {mod.name}"
     if action.type == ACTION_WAIT:
@@ -157,7 +157,7 @@ def execute(
     if action.type in (ACTION_MOD_START, ACTION_MOD_STOP):
         mod = cfg.get_mod(action.value)
         if mod is None:
-            return (0.0, "找不到对应模组，可能已被移除")
+            return (0.0, "找不到对应工具，可能已被移除")
         if not mod.enabled:
             return (0.0, f"{mod.name}：已被屏蔽，跳过")
         if action.type == ACTION_MOD_START:
@@ -187,10 +187,10 @@ def describe(rule, cfg: Config) -> str:
             parts.append("恢复原生")
         elif a.type == ACTION_MOD_START:
             mod = cfg.get_mod(a.value)
-            parts.append(f"启动 {mod.name if mod else '模组'}")
+            parts.append(f"启动 {mod.name if mod else '工具'}")
         elif a.type == ACTION_MOD_STOP:
             mod = cfg.get_mod(a.value)
-            parts.append(f"停止 {mod.name if mod else '模组'}")
+            parts.append(f"停止 {mod.name if mod else '工具'}")
         elif a.type == ACTION_WAIT:
             parts.append(f"等 {a.value}s")
         else:

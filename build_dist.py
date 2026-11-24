@@ -210,6 +210,19 @@ def main() -> int:
     write_gbk(target / "使用说明.txt", README_TEXT)
     write_gbk(target / "恢复分辨率.bat", RESTORE_BAT)
 
+    # 官网图标缓存：三方工具那排的图标。带上它，别人第一次打开就是官方图标，
+    # 不用先等程序自己去官网抓一遍（抓不到会退回首字母方块）
+    fav_src = ROOT / "cache" / "favicons"
+    if fav_src.is_dir():
+        fav_dst = target / "cache" / "favicons"
+        fav_dst.mkdir(parents=True, exist_ok=True)
+        count = 0
+        for f in fav_src.iterdir():
+            if f.is_file():
+                shutil.copy2(f, fav_dst / f.name)
+                count += 1
+        print(f"[OK] 附带官网图标缓存：{count} 个文件")
+
     # 打 zip
     if ZIP_PATH.exists():
         ZIP_PATH.unlink()

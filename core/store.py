@@ -43,7 +43,6 @@ BUILTIN_PAGES = [
 ]
 
 CONFIG_NAME = "config.json"
-
 KIND_EXE = "exe"
 KIND_HTML = "html"
 KIND_URL = "url"
@@ -59,6 +58,20 @@ KIND_LABEL = {
     KIND_REMOTE: "三方工具",
     KIND_PAGE: "内置",
 }
+
+# 推荐的第三方工具：(显示名, 官网地址, 直链下载地址)
+# 直链空着 = 软件里只挂个官网入口，点格子在浏览器里打开；
+# 有直链 = 点「下载」直接在软件内下，下完自动补进工具列表。
+RECOMMENDED_TOOLS = [
+    ("Steam", "https://store.steampowered.com/",
+     "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"),
+    ("图吧工具箱", "https://tbtool.co/", ""),
+    ("飞鼠格式", "https://flyingmouse-format.cn/", ""),
+    ("Epic Games", "https://www.epicgames.com/site/home/?lang=zh-CN", ""),
+    ("PCL2 启动器", "https://pcl.ruanmao.net/", ""),
+    ("KOOK", "https://www.kookapp.cn/", ""),
+    ("OOPZ", "https://oopz.cn/", ""),
+]
 
 
 def app_dir() -> Path:
@@ -434,8 +447,8 @@ HOTKEY_LABEL = {key: label for key, label, _default in HOTKEY_ACTIONS}
 # ---------------------------------------------------------------------------
 ACTION_RESOLUTION = "resolution"   # 切到指定分辨率（value = "1280x960"）
 ACTION_RESTORE = "restore"         # 恢复原生
-ACTION_MOD_START = "mod_start"     # 启动模组（value = 模组 id）
-ACTION_MOD_STOP = "mod_stop"       # 停止模组
+ACTION_MOD_START = "mod_start"     # 启动工具（value = 工具 id）
+ACTION_MOD_STOP = "mod_stop"       # 停止工具
 ACTION_WAIT = "wait"               # 等待（value = 秒）
 # 下面这些是"把面板上的开关也交给自动化"：
 ACTION_ACE_LIMIT = "ace_limit"         # 限制 ACE 扫盘（压低优先级）
@@ -455,8 +468,8 @@ ACTION_CACHE_CLEAN = "cache_clean"     # 清理着色器缓存
 ACTION_LABEL = {
     ACTION_RESOLUTION: "切换分辨率",
     ACTION_RESTORE: "恢复原生分辨率",
-    ACTION_MOD_START: "启动模组",
-    ACTION_MOD_STOP: "停止模组",
+    ACTION_MOD_START: "启动工具",
+    ACTION_MOD_STOP: "停止工具",
     ACTION_WAIT: "等待",
     ACTION_ACE_LIMIT: "反作弊优化",
     ACTION_ACE_RESTORE: "还原反作弊优化",
@@ -786,12 +799,39 @@ class Config:
         self.bar_side = bs if bs in ("left", "right") else ""
         # 内置页面模组只播种一次，用户删掉后不再自动加回来
         self.page_mods_seeded = bool(raw.get("page_mods_seeded", False))
+        # 推荐三方工具同样只播种一次
+        self.tools_seeded = bool(raw.get("tools_seeded", False))
         fpos = raw.get("fps_pos") or []
         self.fps_pos = [int(fpos[0]), int(fpos[1])] if isinstance(fpos, (list, tuple)) and len(fpos) == 2 else []
         pos = raw.get("hud_pos") or []
         self.hud_pos = [int(pos[0]), int(pos[1])] if isinstance(pos, (list, tuple)) and len(pos) == 2 else []
         self._migrate_bundled()
+        self._seed_recommended_tools()
         self.save()
+
+    def _seed_recommended_tools(self) -> None:
+        """把推荐的三方工具补进列表，只补一次。
+
+        老用户升级上来时列表里本来没有这一排，这里补上就能直接看到；
+        自己删掉的不再自动加回来（靠 tools_seeded 标记）。
+        """
+        if self.tools_seeded:
+            return
+        have = {(m.path or "").rstrip("/").lower() for m in self.mods if m.kind == KIND_REMOTE}
+        for name, url, dl in RECOMMENDED_TOOLS:
+            if url.rstrip("/").lower() in have:
+                continue
+            self.mods.append(
+                Mod(
+                    id=uuid.uuid4().hex[:8],
+                    name=name,
+                    path=url,
+                    kind=KIND_REMOTE,
+                    dl=dl,
+                    enabled=True,
+                )
+            )
+        self.tools_seeded = True
 
     def _migrate_bundled(self) -> None:
         """内置模组存在时，把指桌面上旧路径的同名模组切到内置副本，缺了就补一条。"""
@@ -915,6 +955,7 @@ class Config:
             "bar_pos": list(self.bar_pos or []),
             "bar_side": self.bar_side,
             "page_mods_seeded": bool(self.page_mods_seeded),
+            "tools_seeded": bool(self.tools_seeded),
             "mods": [m.to_dict() for m in self.mods],
             "rules": [r.to_dict() for r in self.rules],
         }

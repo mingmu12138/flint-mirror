@@ -102,7 +102,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.10.1"
+APP_VERSION = "v1.10.2"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -892,7 +892,7 @@ def shell_icon(mod: Mod) -> QtGui.QIcon:
 
 def confirm_remove(parent, mod: Mod) -> bool:
     box = QtWidgets.QMessageBox(parent)
-    box.setWindowTitle("移除模组")
+    box.setWindowTitle("移除工具")
     box.setText(f'把「{mod.name}」从框架里移除？')
     box.setInformativeText("只从列表移除，不会删除原文件。")
     box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
@@ -989,7 +989,7 @@ class ModTile(QtWidgets.QFrame):
     # ------------------------------------------------------------------
     def _act(self) -> None:
         if not self.mod.enabled:
-            self.win.toast("这个模组被屏蔽了，右键「允许框架启动」可以打开", False)
+            self.win.toast("这个工具被屏蔽了，右键「允许框架启动」可以打开", False)
             return
         if self.mod.kind == KIND_REMOTE:
             self.win.open_remote(self.mod)
@@ -1104,7 +1104,7 @@ class ModTile(QtWidgets.QFrame):
 
 
 # ---------------------------------------------------------------------------
-# 模组卡片
+# 工具卡片
 # ---------------------------------------------------------------------------
 class ModCard(QtWidgets.QFrame):
     changed = Signal()
@@ -1132,7 +1132,7 @@ class ModCard(QtWidgets.QFrame):
         row1.setSpacing(10)
 
         self.chk = QtWidgets.QCheckBox()
-        self.chk.setToolTip("启用 = 允许这个模组被框架启动；取消勾选 = 从框架里屏蔽掉")
+        self.chk.setToolTip("启用 = 允许这个工具被框架启动；取消勾选 = 从框架里屏蔽掉")
         self.chk.setChecked(self.mod.enabled)
         self.chk.toggled.connect(self._on_enable)
         row1.addWidget(self.chk)
@@ -1166,7 +1166,7 @@ class ModCard(QtWidgets.QFrame):
 
         remove_btn = QtWidgets.QPushButton("✕")
         remove_btn.setObjectName("Danger")
-        remove_btn.setToolTip("从框架里移除这个模组（不会删除原文件）")
+        remove_btn.setToolTip("从框架里移除这个工具（不会删除原文件）")
         remove_btn.clicked.connect(self._on_remove)
         row1.addWidget(remove_btn)
 
@@ -1178,7 +1178,7 @@ class ModCard(QtWidgets.QFrame):
         self.auto_chk = QtWidgets.QCheckBox("随框架启动")
         self.auto_chk.setStyleSheet("color:#7b8494; font-size:11px;")
         self.auto_chk.setChecked(self.mod.autostart)
-        self.auto_chk.setToolTip("打开燧镜时，自动把这个模组一起拉起来")
+        self.auto_chk.setToolTip("打开燧镜时，自动把这个工具一起拉起来")
         self.auto_chk.toggled.connect(self._on_autostart)
         row2.addWidget(self.auto_chk)
 
@@ -1284,7 +1284,7 @@ class ModCard(QtWidgets.QFrame):
         elif self.mod.kind != KIND_EXE:
             self.status_label.setText("● 网页")
             self.status_label.setStyleSheet("color:#8a7bd4; font-size:11px;")
-            self.status_label.setToolTip("网页类模组用默认浏览器打开，框架不接管它")
+            self.status_label.setToolTip("网页类工具用默认浏览器打开，框架不接管它")
         elif running:
             self.status_label.setText("● 运行中")
             self.status_label.setStyleSheet("color:#20ffe0; font-size:11px;")
@@ -1340,12 +1340,12 @@ class ModCard(QtWidgets.QFrame):
 
 
 # ---------------------------------------------------------------------------
-# 模组添加对话框
+# 工具添加对话框
 # ---------------------------------------------------------------------------
 class AddModDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("添加模组")
+        self.setWindowTitle("添加工具")
         self.setMinimumWidth(520)
         self.setStyleSheet(qss())
         self.result_path = ""
@@ -3656,17 +3656,17 @@ class GuideDialog(QtWidgets.QDialog):
 """,
             ),
             (
-                "自带的那几个模组",
+                "自带的那几个工具",
                 "不用另装软件，点开就能用",
                 """
-<div>模组区带 <b>「内置」</b>角标的那几个，是跟着程序一起装进来的，升级时自动换新版，
+<div>工具区带 <b>「内置」</b>角标的那几个，是跟着程序一起装进来的，升级时自动换新版，
 不用自己去网上找、也不会重复下载。</div>
 <div style="margin-top:12px"><b>三角洲情报</b>：点「打开页面」直接进软件自己的页面，密码、弹药、假人、收益一屏刷。</div>
 <div style="margin-top:12px"><b>显示器滤镜</b>：改的是显示器输出的伽马曲线——提亮、抬暗部、偏暖偏冷、加对比，
 18 个预设点一下就套上；左边原图、右边滤镜对着看，参数还能细调。关窗自动还原，不注入游戏、不叠画面层。</div>
 <div style="margin-top:12px"><b>qBittorrent</b>：BT 下载器，随包装好，点开就能加种子、下任务。</div>
-<div style="margin-top:12px">老用户升级后启动，内置模组会自己补进列表，不用手动加；自己删掉的那条不会再硬塞回来。</div>
-<div style="margin-top:12px;color:#7b8494">想给某个模组改名字或换图标：在模组区右键那一项。</div>
+<div style="margin-top:12px">老用户升级后启动，内置工具会自己补进列表，不用手动加；自己删掉的那条不会再硬塞回来。</div>
+<div style="margin-top:12px;color:#7b8494">想给某个工具改名字或换图标：在工具区右键那一项。</div>
 """,
             ),
             (
@@ -3676,7 +3676,7 @@ class GuideDialog(QtWidgets.QDialog):
 <div><b>1. 切分辨率</b>：点<input style="background:#1b2230;border:1px solid #2b3546;border-radius:4px;
 padding:1px 6px;color:#20ffe0"> 切换为 {ratio} </input> 那个大按钮（右边下拉能换档位，{target} 只是其中一档），
 切过去再点一次就回原生。忘了切回去就按 <b>Ctrl + Alt + R</b>。</div>
-<div style="margin-top:12px"><b>2. 挂模组</b>：底下模组区点「启动」，或者图标视图里双击。关掉面板它们会继续跑，收进托盘就行。</div>
+<div style="margin-top:12px"><b>2. 挂工具</b>：底下工具区点「启动」，或者图标视图里双击。关掉面板它们会继续跑，收进托盘就行。</div>
 <div style="margin-top:12px"><b>3. 开自动化</b>：点顶部「自动化」→ 上面紫色的 <b>一键模板</b> → 点「两条一起加」。
 <br>· A 开战准备：等 30 秒 → 反作弊优化 → 开帧率灯 → 开回放缓冲（<b>不动分辨率</b>，保持你这个显示器原生）
 <br>· B 收尾归档：存最后一段回放 → 关回放 → 关帧率灯 → 还原分辨率
@@ -5088,7 +5088,7 @@ class SettingsDialog(QtWidgets.QDialog):
         b_guide.clicked.connect(lambda: self.win.show_guide(force=True))
         b_exp = QtWidgets.QPushButton("导出配置")
         b_exp.setObjectName("Ghost")
-        b_exp.setToolTip("把热键、模组、档位这些打包成一个 json，换电脑用")
+        b_exp.setToolTip("把热键、工具、档位这些打包成一个 json，换电脑用")
         b_exp.clicked.connect(self._export_config)
         b_imp = QtWidgets.QPushButton("导入配置")
         b_imp.setObjectName("Ghost")
@@ -5335,7 +5335,7 @@ class SettingsDialog(QtWidgets.QDialog):
             self,
             "安装新版本",
             f"发现 {info.get('version')}（{float(info.get('mb') or 0):.0f} MB）\n{path}\n\n"
-            "现在安装吗？\n配置、素材、模组都会保留，装完自动重开。",
+            "现在安装吗？\n配置、素材、工具都会保留，装完自动重开。",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.Yes,
         )
@@ -7096,7 +7096,7 @@ class ActionRow(QtWidgets.QWidget):
     HINTS = {
         ACTION_RESOLUTION: "只列真实支持的模式",
         ACTION_RESTORE: "回到原生",
-        ACTION_MOD_START: "选一个已添加的模组",
+        ACTION_MOD_START: "选一个已添加的工具",
         ACTION_MOD_STOP: "会连子进程一起关掉",
         ACTION_WAIT: "给游戏留加载时间",
         ACTION_ACE_LIMIT: "要管理员权限，没提权会跳过",
@@ -7238,7 +7238,7 @@ class RuleDialog(QtWidgets.QDialog):
     """新建 / 编辑一条自动化规则。"""
 
     TRIGGER_HINT = {
-        TRIGGER_START: "进程一启动，就执行下面的动作 —— 一般用来切到游戏档、顺手拉起模组。",
+        TRIGGER_START: "进程一启动，就执行下面的动作 —— 一般用来切到游戏档、顺手拉起工具。",
         TRIGGER_STOP: "进程关掉以后，执行下面的动作 —— 一般用来还原分辨率。",
         TRIGGER_MANUAL: "不会自动跑，只能从主界面或托盘菜单手动点这条规则。",
     }
@@ -7350,13 +7350,13 @@ class RuleDialog(QtWidgets.QDialog):
         btns = QtWidgets.QHBoxLayout()
         test = QtWidgets.QPushButton("试运行")
         test.setObjectName("Ghost")
-        test.setToolTip("只把每一步会干什么打出来，不改分辨率、不启停模组")
+        test.setToolTip("只把每一步会干什么打出来，不改分辨率、不启停工具")
         test.clicked.connect(self._test)
         btns.addWidget(test)
 
         run_now = QtWidgets.QPushButton("立即执行")
         run_now.setObjectName("Ghost")
-        run_now.setToolTip("真的跑一次（会切分辨率、启停模组），保存前想验证就用这个")
+        run_now.setToolTip("真的跑一次（会切分辨率、启停工具），保存前想验证就用这个")
         run_now.clicked.connect(self._run_now)
         btns.addWidget(run_now)
         btns.addStretch(1)
@@ -7440,7 +7440,7 @@ class RuleDialog(QtWidgets.QDialog):
         answer = QtWidgets.QMessageBox.question(
             self,
             "立即执行",
-            "这会把动作真的跑一遍（可能切分辨率、启停模组），确定吗？",
+            "这会把动作真的跑一遍（可能切分辨率、启停工具），确定吗？",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
@@ -7522,7 +7522,7 @@ class AutomationDialog(QtWidgets.QDialog):
         steps = QtWidgets.QLabel(
             "1. 点「+ 新建规则」，起个名字（比如 打三角洲）\n"
             "2. 选触发：游戏启动时 / 游戏退出后 / 只手动点\n"
-            "3. 加动作：切分辨率 / 恢复原生 / 启停模组 / 反作弊优化 / 帧率灯 / 回放 / 录屏 /\n"
+            "3. 加动作：切分辨率 / 恢复原生 / 启停工具 / 反作弊优化 / 帧率灯 / 回放 / 录屏 /\n"
             "   截图 / 清缓存 / 等待 —— 面板上能点的开关，基本都能塞进动作链\n"
             "4. 点「试运行」看一遍效果，没问题再「保存」\n"
             "5. 去掉左边的勾 = 这条规则先暂停，不会删除"
@@ -7531,14 +7531,14 @@ class AutomationDialog(QtWidgets.QDialog):
         steps.setWordWrap(True)
         gb.addWidget(steps)
 
-        gnote = QtWidgets.QLabel("最常用的是两条一对：开游戏切档+拉模组，关游戏自动还原。不知道从哪下手，点下面：")
+        gnote = QtWidgets.QLabel("最常用的是两条一对：开游戏切档+拉工具，关游戏自动还原。不知道从哪下手，点下面：")
         gnote.setObjectName("Small")
         gnote.setWordWrap(True)
         gb.addWidget(gnote)
 
         ex = QtWidgets.QHBoxLayout()
         ex.setSpacing(8)
-        b_ex1 = QtWidgets.QPushButton("示例：开游戏切档 + 启动模组")
+        b_ex1 = QtWidgets.QPushButton("示例：开游戏切档 + 启动工具")
         b_ex1.setObjectName("Ghost")
         b_ex1.setFixedHeight(28)
         b_ex1.clicked.connect(lambda: self._preset("start"))
@@ -7640,7 +7640,7 @@ class AutomationDialog(QtWidgets.QDialog):
         row.addWidget(b_del)
         b_test = QtWidgets.QPushButton("试运行")
         b_test.setObjectName("Ghost")
-        b_test.setToolTip("只打日志，不动分辨率、不启停模组")
+        b_test.setToolTip("只打日志，不动分辨率、不启停工具")
         b_test.clicked.connect(self._test)
         row.addWidget(b_test)
 
@@ -7851,7 +7851,7 @@ class AutomationDialog(QtWidgets.QDialog):
         answer = QtWidgets.QMessageBox.question(
             self,
             "立即执行",
-            f"「{rule.name}」会真的跑一遍（可能切分辨率、启停模组），确定吗？",
+            f"「{rule.name}」会真的跑一遍（可能切分辨率、启停工具），确定吗？",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
@@ -11530,7 +11530,7 @@ class MainWindow(QtWidgets.QWidget):
         auto_btn = QtWidgets.QPushButton("自动化")
         auto_btn.setObjectName("Seg")
         auto_btn.setFixedHeight(28)
-        auto_btn.setToolTip("自己编排：看到某个进程就切分辨率、启动模组")
+        auto_btn.setToolTip("自己编排：看到某个进程就切分辨率、启动工具")
         auto_btn.clicked.connect(self.show_automation)
         nav_row.addWidget(auto_btn)
 
@@ -11950,7 +11950,7 @@ class MainWindow(QtWidgets.QWidget):
 
         self.tools_lay.addStretch(1)
 
-        # 模组区标题
+        # 工具区标题
         mod_head = QtWidgets.QHBoxLayout()
         self.mod_title = QtWidgets.QLabel("工具")
         self.mod_title.setObjectName("Section")
@@ -11983,13 +11983,9 @@ class MainWindow(QtWidgets.QWidget):
         mod_head.addLayout(view_box)
         mod_head.addSpacing(10)
 
-        self.launch_all_btn = QtWidgets.QPushButton("全部启动")
-        self.launch_all_btn.setObjectName("Ghost")
-        self.launch_all_btn.setToolTip(
-            "按列表从上到下依次启动（每个隔 0.8 秒，等前一个站住再起下一个）"
-        )
-        self.launch_all_btn.clicked.connect(self.launch_all_mods)
-        mod_head.addWidget(self.launch_all_btn)
+        # 工具页不放「全部启动」：这一页混着网页工具和还没下载的三方工具，
+        # 一键全起没有意义，也容易误开一堆东西。要全起去模组页。
+        self.launch_all_btn = None
 
         add_btn = QtWidgets.QPushButton("+ 添加工具")
         add_btn.setObjectName("Ghost")
@@ -12005,7 +12001,7 @@ class MainWindow(QtWidgets.QWidget):
         mod_head.addWidget(self.mod_menu_btn)
         self.mods_lay.addLayout(mod_head)
 
-        # 模组滚动区
+        # 工具滚动区
         self.scroll = QtWidgets.QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -12087,7 +12083,7 @@ class MainWindow(QtWidgets.QWidget):
         self._sync_tabs()
 
     # ------------------------------------------------------------------
-    # 模组区
+    # 工具区
     # ------------------------------------------------------------------
     def set_music_bar(self, on: bool) -> None:
         """音乐页那个「桌面悬浮条」开关：开就等有歌时自己露头，关就收起。"""
@@ -12329,12 +12325,12 @@ class MainWindow(QtWidgets.QWidget):
                 "delay": int(mod.delay or 0),
             })
         if not rows:
-            self.toast("现在没有自己加的模组，导出来是空的", False)
+            self.toast("现在没有自己加的工具，导出来是空的", False)
             return
         path, _f = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "导出模组清单",
-            str(Path.home() / "Desktop" / "燧镜模组清单.json"),
+            "导出工具清单",
+            str(Path.home() / "Desktop" / "燧镜工具清单.json"),
             "JSON (*.json)",
         )
         if not path:
@@ -12351,14 +12347,14 @@ class MainWindow(QtWidgets.QWidget):
         except Exception as exc:  # noqa: BLE001
             self.toast("导出失败：" + str(exc)[:60], False)
             return
-        self.toast(f"已导出 {len(rows)} 条模组，换台电脑点「导入模组清单」就行")
+        self.toast(f"已导出 {len(rows)} 条工具，换台电脑点「导入工具清单」就行")
 
     def import_mods(self, *_a) -> None:
         import json as _json
         import uuid as _uuid
 
         path, _f = QtWidgets.QFileDialog.getOpenFileName(
-            self, "导入模组清单", str(Path.home() / "Desktop"), "JSON (*.json)"
+            self, "导入工具清单", str(Path.home() / "Desktop"), "JSON (*.json)"
         )
         if not path:
             return
@@ -12413,11 +12409,11 @@ class MainWindow(QtWidgets.QWidget):
             pass
         if added:
             tail = f"，{skipped} 条本来就有" if skipped else ""
-            self.toast(f"导入 {added} 条模组{tail}")
+            self.toast(f"导入 {added} 条工具{tail}")
         elif skipped:
-            self.toast("这些模组都已经在列表里了", False)
+            self.toast("这些工具都已经在列表里了", False)
         else:
-            self.toast("清单里没有可导入的模组", False)
+            self.toast("清单里没有可导入的工具", False)
 
     def add_mod(self) -> None:
         """「+ 添加工具」：先问一句是本地程序，还是挂官网链接的三方工具。"""
@@ -14789,7 +14785,7 @@ class MainWindow(QtWidgets.QWidget):
                 self.run_rule(rule, f"{rule.process} 退出")
 
     # ------------------------------------------------------------------
-    # 模组启动（统一处理延迟）
+    # 工具启动（统一处理延迟）
     # ------------------------------------------------------------------
     def open_remote(self, mod: Mod) -> None:
         """三方工具：有直链就在软件里下载，没直链就打开官网。"""
@@ -14883,7 +14879,7 @@ class MainWindow(QtWidgets.QWidget):
             self._do_launch(mod)
 
     def show_page_mod(self, mod: Mod) -> None:
-        """内置页面模组：不启动任何进程，直接切到对应页面（或弹出窗口）。"""
+        """内置页面工具：不启动任何进程，直接切到对应页面（或弹出窗口）。"""
         key = (mod.path or "").strip()
         if key == "delta":
             self.show_delta()
@@ -14922,11 +14918,11 @@ class MainWindow(QtWidgets.QWidget):
                 # 第一次没起来：不少工具是"第一次拉运行库/拉子进程会慢半拍"，再给一次机会
                 mod._retried = True
                 self.toast(f"{mod.name} 没起来，自动再试一次…")
-                log.warning("模组 %s 首次启动未成功（%s），自动重试", mod.name, msg)
+                log.warning("工具 %s 首次启动未成功（%s），自动重试", mod.name, msg)
                 QTimer.singleShot(900, lambda: self._retry_mod(mod))
                 return
             self.toast(msg + "（已自动重试过一次）", False)
-            log.warning("模组启动失败：%s", msg)
+            log.warning("工具启动失败：%s", msg)
         else:
             mod._retried = False
         for card in self.cards:
@@ -14957,17 +14953,19 @@ class MainWindow(QtWidgets.QWidget):
             and not self.guard.is_running(m)
         ]
         if not todo:
-            self.toast("没有需要启动的模组（都已启用且未运行）")
+            self.toast("没有需要启动的工具（都已启用且未运行）")
             return
-        log.info("按顺序启动 %d 个模组：%s", len(todo), "、".join(m.name for m in todo))
+        log.info("按顺序启动 %d 个工具：%s", len(todo), "、".join(m.name for m in todo))
         self._launch_queue = list(todo)
-        self.launch_all_btn.setEnabled(False)
+        if self.launch_all_btn is not None:
+            self.launch_all_btn.setEnabled(False)
         QTimer.singleShot(0, self._launch_next)
 
     def _launch_next(self) -> None:
         queue = getattr(self, "_launch_queue", [])
         if not queue:
-            self.launch_all_btn.setEnabled(True)
+            if self.launch_all_btn is not None:
+                self.launch_all_btn.setEnabled(True)
             self.toast("全部启动走完一轮")
             return
         mod = queue.pop(0)
@@ -14977,7 +14975,7 @@ class MainWindow(QtWidgets.QWidget):
             QTimer.singleShot(800, self._launch_next)
 
     def _tick(self) -> None:
-        # 重建模组列表时旧卡片会先销毁，这里必须防一手：
+        # 重建工具列表时旧卡片会先销毁，这里必须防一手：
         # 刷新到已释放的 Qt 对象会抛 RuntimeError，严重时直接把界面带走
         for row in (self.cards, self.tiles):
             for it in list(row):
@@ -15437,7 +15435,7 @@ class MainWindow(QtWidgets.QWidget):
         lbl.setText(" · ".join(parts))
 
     def shutdown_mods(self) -> None:
-        """退出程序时，把由本程序启动的模组一起关掉，不留孤儿进程。"""
+        """退出程序时，把由本程序启动的工具一起关掉，不留孤儿进程。"""
         stopped = []
         for mod in self.cfg.mods:
             if mod.kind != KIND_EXE:
@@ -15451,7 +15449,7 @@ class MainWindow(QtWidgets.QWidget):
             except Exception:  # noqa: BLE001
                 pass
         if stopped:
-            log.info("退出：一并停掉模组 %s", " / ".join(stopped))
+            log.info("退出：一并停掉工具 %s", " / ".join(stopped))
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         isle = getattr(self, "mode_island", None)
@@ -15486,7 +15484,7 @@ class MainWindow(QtWidgets.QWidget):
         if not self.cfg.tray_tip_shown and self.tray is not None:
             self.tray.showMessage(
                 APP_NAME,
-                "程序已收进托盘，双击图标可以再打开；右键菜单可切换分辨率或启动模组。",
+                "程序已收进托盘，双击图标可以再打开；右键菜单可切换分辨率或启动工具。",
                 QtWidgets.QSystemTrayIcon.Information,
                 4000,
             )
@@ -15739,10 +15737,10 @@ class AppTray(QtWidgets.QSystemTrayIcon):
         m.addSeparator()
 
     def _sec_mods(self, m) -> None:
-        sub = m.addMenu("模组")
+        sub = m.addMenu("工具")
         enabled_mods = [x for x in self.cfg.mods if x.enabled]
         if not enabled_mods:
-            empty = sub.addAction("（没有启用的模组）")
+            empty = sub.addAction("（没有启用的工具）")
             empty.setEnabled(False)
         for mod in enabled_mods:
             running = mod.kind == KIND_EXE and self.guard.is_running(mod)
@@ -15889,7 +15887,7 @@ def run(show_panel: bool = True) -> int:
     guard = ProcessGuard()
     hotkeys = HotkeyManager()
     win = MainWindow(cfg, guard, hotkeys)
-    # 不管从托盘退出、关窗口还是别的方式退出，都先把挂着的模组关掉
+    # 不管从托盘退出、关窗口还是别的方式退出，都先把挂着的工具关掉
     app.aboutToQuit.connect(win.shutdown_mods)
 
     if QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
@@ -15912,11 +15910,11 @@ def run(show_panel: bool = True) -> int:
             win.audio_tray = None
             log.info("托盘：只用了主图标（小喇叭图标按设置在设置里关掉了）")
 
-    # 随框架启动的模组
+    # 随框架启动的工具
     for mod in cfg.mods:
         if mod.enabled and mod.autostart and mod.exists:
             guard.launch(mod)
-            log.info("自动启动模组：%s", mod.name)
+            log.info("自动启动工具：%s", mod.name)
 
     win.show()
 
