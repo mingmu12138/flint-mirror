@@ -11267,6 +11267,9 @@ class ArtLayer(QtWidgets.QWidget):
 
 
 class MainWindow(QtWidgets.QWidget):
+    # 后台线程探测完，用信号把结果递回主线程（工作线程里直接碰界面会崩）
+    scan_result = QtCore.Signal(object)
+
     def __init__(self, cfg: Config, guard: ProcessGuard, hotkeys: HotkeyManager):
         super().__init__()
         self.cfg = cfg
@@ -11294,6 +11297,8 @@ class MainWindow(QtWidgets.QWidget):
         self._rule_active: dict = {}
         self._quitting = False
         self._hotkeys_registered = False
+        # 本机工具探测的结果回主线程处理
+        self.scan_result.connect(self._on_scan_result)
 
         self.setObjectName("Root")
         self.setWindowTitle(APP_NAME)
@@ -12384,9 +12389,18 @@ class MainWindow(QtWidgets.QWidget):
             except Exception as exc:  # noqa: BLE001
                 log.warning("扫描本机已装工具失败：%s", exc)
                 return
-            QTimer.singleShot(0, lambda: self._apply_scan(hits, pending, now))
+            self.scan_result.emit({"hits": hits, "scanned": pending, "stamp": now})
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _on_scan_result(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        self._apply_scan(
+            payload.get("hits") or {},
+            list(payload.get("scanned") or []),
+            float(payload.get("stamp") or 0.0),
+        )
 
     def _apply_scan(self, hits: dict, scanned: list, stamp: float) -> None:
         for name in scanned:
