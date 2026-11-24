@@ -15,6 +15,7 @@
 
 ### 模组接口
 
+- 打包版补收 `html` / `html.parser` / `html.entities` / `_markupbase`：内置「平台视频」的 yt-dlp 是运行时从模组 `assets\pylibs` 挂进来的，打包时静态分析看不见它，PyInstaller 只收了 `html` 和 `html.entities`，漏掉 `html.parser`，模组里点下载就报 `ModuleNotFoundError: No module named 'html.parser'`；模组 `assets\pylibs` 里也自带了这一份，两条路都兜着
 - 补上文档承诺、代码里没实现的四件事：宿主事件（`app.started` / `game.started` / `game.stopped` / `mod.enabled` / `mod.disabled`）以前从没发过，现在真发；模组 `host.ui.register_page` 以前被宿主忽略，现在注册的界面会出现在模组卡片「⋯」里，点了开窗显示；模组 `host.hotkey.register` 以前也是空转，现在能真注册全局热键（热键管理器不支持单独注销，停用后按键不触发）；`fs.data` 在文档里写清「没有对应 API，直接用 paths.data_dir 写文件」
 - `docs\MOD_API.md` 同步改准：事件表标出各自触发条件（`game.*` 要「自动化」里配了该进程的规则才会发），界面页说明改成「菜单里开窗」而不是「模组页加标签」
 - 新增 `host.shell.capture(args, timeout)`：等外部程序跑完并把 `(返回码, 标准输出, 标准错误)` 拿回来，`launch` 那种「发射后不管、失败原因看不到」的缺口补上了；它是同步的，几十秒以上的长任务仍建议模组自己管进程（权限照样申请 `shell`）

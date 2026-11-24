@@ -104,6 +104,10 @@ assets\   随包资源
   yt-dlp 读浏览器 cookie 才不会报缺模块（不读 cookie 的普通下载本来不受影响）。
 · assets\lib 由宿主在导入 main.py 之前自动挂进 sys.path；目录名写成 assets\pylibs 宿主也认。
   老宿主不挂的话，模组自己在 on_load 里补一手 sys.path.insert，两种都能跑。
+· 标准库也别指望宿主收全：打包版只收静态分析看得到的模块。yt-dlp 这类运行时才挂进来的
+  代码，会缺 html.parser / _markupbase（报 ModuleNotFoundError: No module named 'html.parser'），
+  从 v1.10.3 起宿主补收了；你自己的模组带纯 Python 依赖时，把这类标准库模块一起放进 assets\pylibs
+  最稳（放 html\ 目录和 _markupbase.py 即可，加载时优先级高于宿主）。
 
 ==================================================================
 六、交付前自检（模组侧自己跑，跑完把结果贴回来）

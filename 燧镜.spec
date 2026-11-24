@@ -24,6 +24,11 @@ for _mod in ('PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets',
 # 内置的「平台视频」用 yt-dlp 读浏览器 cookie 时要它（那边有兜底，但能收就收上）。
 hiddenimports += ['sqlite3']
 
+# yt-dlp 是运行时才从模组 pylibs 挂进来的动态代码，静态分析看不见它的 import。
+# 它解析页面要用 html.parser（连带 _markupbase、html.entities），自身没 import 过就收不全，
+# 表现是模组里报 ModuleNotFoundError: No module named 'html.parser'。
+hiddenimports += ['html', 'html.parser', 'html.entities', '_markupbase']
+
 
 a = Analysis(
     ['launcher.py'],

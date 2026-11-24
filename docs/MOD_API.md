@@ -281,6 +281,7 @@ code, out, err = host.shell.capture([r"C:\xxx\ffmpeg.exe", "-version"], 10)
 - `tool/mod_test.py` 会检查上面两条（位置 + 权限），不合规直接判不合格。
 - `.sjmod` 是 zip，纯 Python 包别带 `__pycache__`、`.pyc`，体积能小一半。
 - 依赖只在**用到时**才 import（放函数里），别写顶层 —— 顶层 import 失败会让整个模组加载不起来，宿主只能看到一句 `ImportError`。
+- **标准库也不一定收全**。宿主是 PyInstaller 打的，只收静态分析看得到的模块；你的包是运行时才挂进 `sys.path` 的动态代码，宿主分析不到。踩过两个：`sqlite3`（yt-dlp 读浏览器 cookie 用）、`html.parser` + `_markupbase`（yt-dlp 解析页面用）。前者的 `_sqlite3.pyd` 从 v1.10.3 起随宿主补收；后者两个宿主也补收了，但**你自己带纯 Python 依赖时，把这类标准库模块一起放进 `assets/pylibs` 最稳** —— 放个 `html/` 目录和 `_markupbase.py`，`assets/pylibs` 在 `sys.path` 最前，优先级高于宿主，宿主漏了也能用。
 
 ---
 
