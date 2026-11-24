@@ -1652,8 +1652,11 @@ CHANGELOG = [
             "逐条翻成中文；包里带了可执行程序（.exe/.dll/.bat）的，也逐个列出来再让你决定装不装；"
             "拖拽、点按钮选文件、拖放区三个入口都过这一道",
             "扩展包：模组可以自带依赖了 —— 纯 Python 包放 assets\\lib（pylibs 也认），宿主在 on_load 之前自动挂进 "
-            "sys.path，顶层 import 也能用；命令行程序放 assets\\bin，调用走 host.shell.capture 拿返回码和输出；"
-            "这些依赖仍然不进安装包，体积不为某一个模组让步",
+            "sys.path，顶层 import 也能用；命令行程序放 assets\\bin，调用走 host.shell.capture 拿返回码和输出",
+            "改：平台视频从扩展包改成内置模组，随包分发、装好就在模组页标「内置」（只能停用不能卸载），"
+            "不用再单独装 .sjmod；它自带的 yt-dlp 跟着软件版本走，用户目录里同 id 的旧副本不再重复显示",
+            "修：安装包补收 sqlite3（_sqlite3.pyd）—— 打包版自己没 import 过它，模组用 yt-dlp 读浏览器 cookie 时会缺",
+            "提示：自己装或用 .sjmod 更新模组之后要重启一次燧镜，main.py 是加载时读进内存的",
             "扩展包自带可执行程序的两条规矩（自检脚本会查）：只能放 assets 下，且 manifest 必须申请 shell 权限",
             "模组页右上角加了个「?」：点开讲清拖的是哪个文件 —— 模组文件夹里的 manifest.json / main.py / assets "
             "是打包原料，不是安装物，拖文件夹会被当坏包拒掉；要拖的是 mods 里那个 com.xxx.sjmod 单文件",

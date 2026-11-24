@@ -16,10 +16,13 @@ for _mod in ('PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets',
     _r = collect_all(_mod)
     datas += _r[0]; binaries += _r[1]; hiddenimports += _r[2]
 
-# 扩展包（.sjmod）的依赖一律不进安装包：宿主只提供接口，包体积不为某一个模组让步。
-# 「平台视频」那类要下视频的模组，yt-dlp / ffmpeg 都由模组自己解决（它现在会先找
-# 系统 PATH，找不到就提示用户把 ffmpeg.exe 放进自己的数据目录）。
+# 内置模组（mods\_builtin）自带的依赖跟着模组目录走：assets\pylibs 由宿主在导入
+# main.py 之前挂进 sys.path，不进 _internal。宿主本身只提供接口，不为某个模组改变体积。
 # QtMultimediaWidgets 本来就在 PySide6 的收集里，不用单独声明。
+
+# 打包版自身没 import 过 sqlite3，PyInstaller 就不会收 _sqlite3.pyd；
+# 内置的「平台视频」用 yt-dlp 读浏览器 cookie 时要它（那边有兜底，但能收就收上）。
+hiddenimports += ['sqlite3']
 
 
 a = Analysis(

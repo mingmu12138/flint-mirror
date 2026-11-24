@@ -1,0 +1,12 @@
+{
+  "id": "com.flint.platform_video",
+  "name": "平台视频",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "author": "燧镜",
+  "description": "粘贴 B 站 / YouTube 链接，自动下载并转成 MP4，在置顶悬浮窗里看攻略视频，打游戏时不用切出去。",
+  "kind": "package",
+  "entry": "main.py",
+  "permissions": ["notify", "ui.page", "hotkey", "events", "fs.data", "shell"],
+  "minAppVersion": "1.10.0"
+}

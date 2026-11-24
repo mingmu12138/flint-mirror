@@ -809,7 +809,11 @@ class ModRegistry:
                     log(f"跳过 {child.name}：{e}", logging.WARNING)
                     continue
                 if spec.id in found:
-                    continue  # 用户目录先扫，已占位
+                    # 内置版和用户目录里装过同 id：内置跟随软件版本走，以它为准；
+                    # 用户目录那份不动、只是不再加载（想用自己那份就把它改成别的 id）。
+                    if not is_builtin:
+                        continue
+                    log(f"{spec.id}：用户目录那份被内置版顶掉，按内置版加载", logging.INFO)
                 data_dir = app_dir() / "mods_data" / spec.id
                 found[spec.id] = ModRuntime(
                     spec,
