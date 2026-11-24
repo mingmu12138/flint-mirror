@@ -16,6 +16,11 @@ for _mod in ('PySide6.QtWebEngineCore', 'PySide6.QtWebEngineWidgets',
     _r = collect_all(_mod)
     datas += _r[0]; binaries += _r[1]; hiddenimports += _r[2]
 
+# 扩展包（.sjmod）的依赖一律不进安装包：宿主只提供接口，包体积不为某一个模组让步。
+# 「平台视频」那类要下视频的模组，yt-dlp / ffmpeg 都由模组自己解决（它现在会先找
+# 系统 PATH，找不到就提示用户把 ffmpeg.exe 放进自己的数据目录）。
+# QtMultimediaWidgets 本来就在 PySide6 的收集里，不用单独声明。
+
 
 a = Analysis(
     ['launcher.py'],

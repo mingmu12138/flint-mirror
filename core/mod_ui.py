@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import json
+import zipfile
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -20,6 +22,70 @@ from core.mod_api import (
     ModRuntime,
     mods_root,
 )
+
+
+# ---------------------------------------------------------------------------
+# 安装前把权限摊开给用户看（中文）
+# ---------------------------------------------------------------------------
+# 权限名 → 普通话解释。和 docs\MOD_API.md 第 5 节一一对应，加权限时两边一起改。
+PERM_TEXT = {
+    "notify": "弹通知（会往屏幕右下角弹提示条）",
+    "ui.page": "在模组卡片菜单里加一项自己的界面",
+    "hotkey": "注册全局热键（别的窗口在前台时也能按到）",
+    "shell": "启动外部程序",
+    "events": "收发宿主的自定义事件",
+    "schedule": "注册定时任务（每次间隔自动跑）",
+    "fs.data": "往自己的数据目录里写文件（下载的缓存、配置都在那儿）",
+}
+
+
+def _peek_manifest(pkg: Path):
+    """不装、只读：从 zip 里捞出最外层那份 manifest.json。
+
+    读不出来就返回 None，交给 install() 去报标准错误。
+    """
+    try:
+        with zipfile.ZipFile(pkg) as zf:
+            names = [n for n in zf.namelist() if n.lower().endswith("manifest.json")]
+            if not names:
+                return None
+            names.sort(key=lambda n: n.count("/"))   # 层级最浅的那份
+            raw = json.loads(zf.read(names[0]).decode("utf-8-sig"))
+            return raw if isinstance(raw, dict) else None
+    except (OSError, zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def _confirm_install(parent, raw: dict) -> bool:
+    """安装确认：把名称、作者、尤其是权限列成人话。"""
+    name = str(raw.get("name") or raw.get("id") or "未命名模组")
+    version = str(raw.get("version") or "0.0.0")
+    author = str(raw.get("author") or "未知")
+    desc = str(raw.get("description") or "").strip()
+    perms = [str(p).strip() for p in (raw.get("permissions") or []) if str(p).strip()]
+
+    lines = [f"模组：{name}　v{version}", f"作者：{author}"]
+    if desc:
+        lines += ["", desc]
+    lines += [""]
+    if perms:
+        lines.append("它要申请这些能力：")
+        for p in perms:
+            lines.append(f"　· {p} —— {PERM_TEXT.get(p, '未在规范里登记的权限，来源不明，建议别装')}")
+        lines += ["", "这些能力只在你启用这个模组后才用得上，停用即收回。"]
+    else:
+        lines.append("这个模组不申请任何权限。")
+
+    box = QtWidgets.QMessageBox(parent)
+    box.setWindowTitle("安装模组")
+    box.setIcon(QtWidgets.QMessageBox.Question)
+    box.setText(f"确定安装「{name}」吗？")
+    box.setInformativeText("\n".join(lines))
+    yes = box.addButton("安装", QtWidgets.QMessageBox.AcceptRole)
+    box.addButton("取消", QtWidgets.QMessageBox.RejectRole)
+    box.setDefaultButton(yes)
+    box.exec()
+    return box.clickedButton() is yes
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +297,9 @@ class _Tile(QtWidgets.QFrame):
         m = QtWidgets.QMenu(self)
         m.addAction("启用" if not self.rt.running else "停用", self.toggle)
         m.addSeparator()
-        pages = self.page.pages_for(self.rt.spec.id) if hasattr(self.page, "pages_for") else []
+        # 界面的 builder 只在模组启用时活着：停用后 _CTX 里的东西都收掉了，
+        # 这时候再点「打开界面」只会得到一个空壳，干脆不列出来。
+        pages = self.page.pages_for(self.rt.spec.id) if (hasattr(self.page, "pages_for") and self.rt.running) else []
         for key, _builder in pages:
             m.addAction(f"打开界面：{key}", lambda k=key: self.page.open_page(self.rt.spec.id, k))
         if pages:
@@ -332,7 +400,7 @@ class _Card(QtWidgets.QFrame):
 
     def _menu(self) -> None:
         m = QtWidgets.QMenu(self)
-        pages = self.page.pages_for(self.rt.spec.id) if hasattr(self.page, "pages_for") else []
+        pages = self.page.pages_for(self.rt.spec.id) if (hasattr(self.page, "pages_for") and self.rt.running) else []
         if pages:
             for key, _builder in pages:
                 m.addAction(f"打开界面：{key}", lambda k=key: self.page.open_page(self.rt.spec.id, k))
@@ -522,6 +590,11 @@ class ModPage(QtWidgets.QWidget):
     # ---------- 刷新 ----------
     def reload(self) -> None:
         self.registry.scan()
+        # 卸载/重扫之后，把已不在列表里的模组登记的界面页清掉，
+        # 免得卡片菜单里留一个点了没反应的「打开界面」。
+        alive = {rt.spec.id for rt in self.registry.all()}
+        for key in [k for k in self._pages if k[0] not in alive]:
+            self._pages.pop(key, None)
         while self.box.count():
             item = self.box.takeAt(0)
             w = item.widget()
@@ -609,6 +682,12 @@ class ModPage(QtWidgets.QWidget):
             self.install_file(Path(path))
 
     def install_file(self, pkg: Path) -> None:
+        # 先把包里的 manifest 只读捞出来，让用户看清这包要什么权限再决定装不装。
+        # 拖拽、选文件、拖放区三个入口都走这里，所以只加这一处就全覆盖了。
+        raw = _peek_manifest(pkg)
+        if raw is not None and not _confirm_install(self, raw):
+            self.main.toast("已取消安装", False)
+            return
         good, msg = self.registry.install(pkg)
         self.main.toast(msg, good)
         if good:

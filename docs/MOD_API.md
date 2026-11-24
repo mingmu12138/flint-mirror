@@ -162,7 +162,8 @@ host.notify("标题", "正文", "info")     # level: info / warn / error
 ### 界面页（权限 `ui.page`）
 
 ```python
-host.ui.register_page("my_page", builder)
+host.ui.register_page("my_page", builder)     # 注册一个界面页
+host.ui.unregister_page("my_page")            # 撤回它，卡片菜单里那一项跟着消失
 ```
 
 `builder` 是个无参函数，返回一个 Qt 控件（`QWidget`）。**不要自己造 QMainWindow**。
@@ -174,7 +175,10 @@ host.ui.register_page("my_page", builder)
 - 每个 `key` 只显示成菜单里一项，**不会变成模组页上的一个标签页**
 - `builder()` 在点击时才调用，可以每次返回新控件；控件销毁交给 Qt
 - 同一个 `key` 重复注册会覆盖前一个 builder
+- `unregister_page(key)` 撤回一个入口。模组停用后卡片菜单里就不列这些项了（注册还留着，重新启用又出现），卸载时连注册一起清
 - 界面里要刷新自己，用 `QTimer` 或 `host.schedule.every()`，别在 `builder` 里起长循环
+
+**要盖在游戏上的浮窗**：模组可以自己 `new` 一个顶层 `QWidget`（无边框 + 置顶），但两条底线——**不要造 `QMainWindow`**（那是宿主的主窗口，模组别去接管生命周期），**这个窗口必须在 `on_disable` 里隐藏并销毁**（连播放器、线程一起收）。停用之后还挂着一个透明窗口，用户只能去任务管理器解决。
 
 ### 热键（权限 `hotkey`）
 
@@ -221,8 +225,13 @@ host.schedule.every(30, my_fn)     # 每 30 秒跑一次，首次也要等 30 �
 ### 启动外部程序（权限 `shell`）
 
 ```python
-host.shell.launch(r"C:\xxx\tool.exe", ["--arg"])
+host.shell.launch(r"C:\xxx\tool.exe", ["--arg"])          # 发射后不管，返回有没有起来
+code, out, err = host.shell.capture([r"C:\xxx\ffmpeg.exe", "-version"], 10)
 ```
+
+- `launch` 只管起来，拿不到输出，也不知道后来是不是崩了。
+- `capture(args, timeout=30)` 会等程序跑完，返回 `(返回码, 标准输出, 标准错误)`。返回码 `>= 0` 是程序自己的；`-1` 是超时被掐；`-2` 是根本没起来。适合探测类、跑一次就要知道结果的活。
+- `capture` 是**同步**的，会占住调用线程。几十秒以上的长任务别用它——那种要能随时中止，模组自己管进程更合适（权限照样申请 `shell`，用户装之前看得见）。
 
 ---
 
@@ -233,7 +242,7 @@ host.shell.launch(r"C:\xxx\tool.exe", ["--arg"])
 | `notify` | 弹通知 | `host.notify()` 抛错 |
 | `ui.page` | 在模组页加一个自己的界面 | `register_page` 抛错 |
 | `hotkey` | 注册全局热键 | `register` 抛错 |
-| `shell` | 启动外部程序 | `launch` 抛错 |
+| `shell` | 启动外部程序（`launch` / `capture`） | 两个都抛错 |
 | `events` | 收发事件 | `on/emit` 抛错 |
 | `schedule` | 定时任务 | `every` 抛错 |
 | `fs.data` | 声明"我要往 data_dir 写文件"。**没有对应的 host API**，拿到 `host.paths.data_dir` 后用普通 `open()` 写 | 不申请也能写，但审核时看不到你在用 |

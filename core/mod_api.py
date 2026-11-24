@@ -38,7 +38,7 @@ import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -424,6 +424,37 @@ class _ShellApi:
             log(f"[{self._spec.id}] 启动失败：\n{traceback.format_exc()}", logging.ERROR)
             return False
 
+    def capture(self, args: List[str], timeout: float = 30) -> Tuple[int, str, str]:
+        """跑一个外部程序、等它结束，把输出拿回来：(返回码, 标准输出, 标准错误)。
+
+        launch 是「发射后不管」，失败原因看不到；这个会等，用来做探测、
+        或者「跑一次就得知道结果」的活（比如 ffmpeg -version、ffprobe 查参数）。
+
+        返回码：>= 0 是程序自己的退出码；-1 是超时被掐；-2 是根本没起来。
+        注意是同步调用，会占住调用线程。跑几十秒以上的长任务别用它——
+        那种要能随时终止，模组自己管进程更合适。
+        """
+        guard(self._spec, "shell")
+        argv = [str(a) for a in args]
+        if not argv:
+            return -2, "", "args 是空的"
+        try:
+            p = subprocess.run(
+                argv,
+                capture_output=True,
+                timeout=float(timeout),
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except subprocess.TimeoutExpired:
+            return -1, "", f"超时（{timeout} 秒）"
+        except OSError:
+            log(f"[{self._spec.id}] 执行失败：\n{traceback.format_exc()}", logging.ERROR)
+            return -2, "", traceback.format_exc()
+
+        out = (p.stdout or b"").decode("utf-8", "replace")
+        err = (p.stderr or b"").decode("utf-8", "replace")
+        return int(p.returncode), out, err
+
 
 class _ScheduleApi:
     """极简定时器：每 N 秒跑一次，模组停用/卸载时全部掐掉。"""
@@ -463,7 +494,8 @@ class _ScheduleApi:
             self._timers.append(t)
         t.start()
 
-    def stop_all(self) -> None:
+    def _stop_all(self) -> None:
+        """宿主内部用：停用/卸载时把所有定时器掐掉。模组不该调这个。"""
         with self._lock:
             self._stopped = True
             timers = list(self._timers)
@@ -638,7 +670,7 @@ class ModRuntime:
                 fn = getattr(self._module, "on_disable", None)
                 if callable(fn):
                     fn()
-            self.host.schedule.stop_all()
+            self.host.schedule._stop_all()
             self._enabled = False
             self.status = STATUS_LOADED
             return True
@@ -744,7 +776,10 @@ class ModRegistry:
             if not base.exists():
                 continue
             for child in sorted(base.iterdir()):
-                if not child.is_dir() or child.name.startswith("_"):
+                # 跳过 _invalid / _tmp_xxx 这类宿主自己的临时目录；
+                # data 是别人放模组数据的老习惯（比如照着旧文档建了个 mods\data），
+                # 不跳过的话每次扫描都会在模组页上挂一条「缺少 manifest.json」的红字。
+                if not child.is_dir() or child.name.startswith("_") or child.name == "data":
                     continue
                 try:
                     spec = load_spec(child, builtin=is_builtin)
