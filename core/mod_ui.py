@@ -564,8 +564,8 @@ class ModPage(QtWidgets.QWidget):
         head.addStretch(1)
 
         help_btn = QtWidgets.QPushButton("?")
-        help_btn.setObjectName("Ghost")
-        help_btn.setFixedSize(30, 30)
+        help_btn.setObjectName("HelpDot")
+        help_btn.setFixedSize(22, 22)
         help_btn.setCursor(QtCore.Qt.PointingHandCursor)
         help_btn.setToolTip("怎么装模组：拖的是哪个文件？点开看看")
         help_btn.clicked.connect(self.show_install_help)

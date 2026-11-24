@@ -394,6 +394,11 @@ QPushButton#Primary:hover { background: @accent-hover; }
 QPushButton#Primary:pressed { background: @accent-press; }
 QPushButton#Ghost { background: transparent; border: 1px solid @line-1; color: @fg-2; }
 QPushButton#Ghost:hover { color: @accent; border-color: @accent; background: rgba(@accent-rgb, 0.07); }
+QPushButton#HelpDot {
+    background: transparent; border: 1px solid @line-1; color: @fg-2;
+    border-radius: 11px; padding: 0px; font-size: 13px; font-weight: 600;
+}
+QPushButton#HelpDot:hover { color: @accent; border-color: @accent; background: rgba(@accent-rgb, 0.07); }
 QPushButton#Skin {
     background: @bg-raised; border: 1px solid @line-1;
     border-radius: @radius-sm; padding: 0px;
