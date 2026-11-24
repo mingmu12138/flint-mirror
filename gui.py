@@ -37,6 +37,7 @@ from core.hotkey import (
     MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK, HotkeyManager,
     format_hotkey, key_name, parse_hotkey,
 )
+from core.flow import FlowLayout, FlowPage
 from core.icon import app_icon
 
 
@@ -87,6 +88,7 @@ from core.store import (
     KIND_EXE,
     KIND_HTML,
     KIND_PAGE,
+    KIND_REMOTE,
     KIND_URL,
     Mod,
     ProcessGuard,
@@ -100,7 +102,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.10.0"
+APP_VERSION = "v1.10.1"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -716,102 +718,116 @@ def apply_theme() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 图标视图：流式布局 + 磁贴
+# 图标视图：流式布局 + 磁贴（布局类见 core/flow.py）
 # ---------------------------------------------------------------------------
-class FlowPage(QtWidgets.QWidget):
-    """图标视图的容器：高度跟着内容行数走，内容不满一屏就不出滚动条。"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.flow: Optional[FlowLayout] = None
-        self.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed
-        )
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        if self.flow is None:
-            return
-        h = self.flow.heightForWidth(self.width())
-        if h > 0 and abs(self.height() - h) > 1:
-            self.setFixedHeight(h)
-
-
-class FlowLayout(QtWidgets.QLayout):
-    """自动换行布局：面板拉宽就多排一列，窄了就自动少一列。"""
-
-    def __init__(self, parent=None, margin=0, hspacing=8, vspacing=8):
-        super().__init__(parent)
-        self._items: List[QtWidgets.QLayoutItem] = []
-        self._hspacing = hspacing
-        self._vspacing = vspacing
-        self.setContentsMargins(margin, margin, margin, margin)
-
-    def addItem(self, item):
-        self._items.append(item)
-
-    def count(self):
-        return len(self._items)
-
-    def itemAt(self, index):
-        if 0 <= index < len(self._items):
-            return self._items[index]
-        return None
-
-    def takeAt(self, index):
-        if 0 <= index < len(self._items):
-            return self._items.pop(index)
-        return None
-
-    def expandingDirections(self):
-        return Qt.Orientations(Qt.Orientation(0))
-
-    def hasHeightForWidth(self):
-        return True
-
-    def heightForWidth(self, width):
-        return self._do_layout(QtCore.QRect(0, 0, width, 0), True)
-
-    def setGeometry(self, rect):
-        super().setGeometry(rect)
-        self._do_layout(rect, False)
-
-    def sizeHint(self):
-        base = self.minimumSize()
-        pw = self.parentWidget()
-        w = pw.width() if pw is not None else 0
-        if w > base.width():
-            return QtCore.QSize(base.width(), max(base.height(), self.heightForWidth(w)))
-        return base
-
-    def minimumSize(self):
-        size = QtCore.QSize()
-        for item in self._items:
-            size = size.expandedTo(item.minimumSize())
-        m = self.contentsMargins()
-        size += QtCore.QSize(m.left() + m.right(), m.top() + m.bottom())
-        return size
-
-    def _do_layout(self, rect, test_only):
-        m = self.contentsMargins()
-        eff = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
-        x, y, line_h = eff.x(), eff.y(), 0
-        for item in self._items:
-            hint = item.sizeHint()
-            w, h = hint.width(), hint.height()
-            if x + w > eff.right() and line_h > 0:
-                x = eff.x()
-                y += line_h + self._vspacing
-                line_h = 0
-            if not test_only:
-                item.setGeometry(QtCore.QRect(x, y, w, h))
-            x += w + self._hspacing
-            line_h = max(line_h, h)
-        return y + line_h - rect.y() + m.bottom()
+# 图标视图用的 FlowLayout / FlowPage 在 core/flow.py（工具页、模组页共用）
 
 
 _ICON_PROVIDER = None
 _ICON_CACHE: dict = {}
+_FAVICON_EXTS = ("png", "ico", "gif", "bmp", "webp")
+
+
+def _favicon_dir() -> Path:
+    """官网图标缓存：扒过一次就存这儿，下次直接读，不再联网。"""
+    p = app_dir() / "cache" / "favicons"
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return p
+
+
+def _favicon_key(host: str) -> str:
+    return re.sub(r"[^a-z0-9.\-]", "_", (host or "").lower())[:64] or "site"
+
+
+def _favicon_file(host: str) -> Optional[Path]:
+    for ext in _FAVICON_EXTS:
+        p = _favicon_dir() / f"{_favicon_key(host)}.{ext}"
+        try:
+            if p.exists() and p.stat().st_size > 100:
+                return p
+        except OSError:
+            continue
+    return None
+
+
+def _try_favicon(mod: Mod) -> Optional[QtGui.QIcon]:
+    if mod.kind not in (KIND_URL, KIND_REMOTE):
+        return None
+    host = (urllib.parse.urlparse(mod.path or "").netloc or "").strip()
+    if not host:
+        return None
+    p = _favicon_file(host)
+    if p is None:
+        return None
+    icon = QtGui.QIcon(str(p))
+    return icon if not icon.isNull() else None
+
+
+def _sniff_image(data: bytes) -> str:
+    """认一下是不是图片（有的站会返回一张 HTML 说 404）。"""
+    if len(data) < 200:
+        return ""
+    if data[:4] == b"\x89PNG":
+        return "png"
+    if data[:2] == b"BM":
+        return "bmp"
+    if data[:4] in (b"\x00\x00\x01\x00", b"\x00\x00\x02\x00"):
+        return "ico"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return ""
+
+
+class _FaviconFetcher(QtCore.QThread):
+    """后台扒官网图标：先试 apple-touch-icon（尺寸大更清楚），再退 favicon.ico。"""
+
+    done = QtCore.Signal(int)  # 成功抓到几个
+
+    def __init__(self, hosts, parent=None):
+        super().__init__(parent)
+        self.hosts = list(hosts)
+        self.got = 0
+
+    def run(self) -> None:
+        for host in self.hosts:
+            if self._grab(host):
+                self.got += 1
+        self.done.emit(self.got)
+
+    def _grab(self, host: str) -> bool:
+        cands = (
+            f"https://{host}/apple-touch-icon.png",
+            f"https://{host}/apple-touch-icon-precomposed.png",
+            f"https://{host}/favicon.ico",
+            f"https://{host}/favicon.png",
+        )
+        for url in cands:
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FlintMirror"
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    data = resp.read(400_000)
+            except Exception:
+                continue
+            ext = _sniff_image(data)
+            if not ext:
+                continue
+            path = _favicon_dir() / f"{_favicon_key(host)}.{ext}"
+            try:
+                path.write_bytes(data)
+                return True
+            except OSError:
+                continue
+        return False
 
 
 def _fallback_icon(name: str, color: str = "#20ffe0") -> QtGui.QIcon:
@@ -833,11 +849,16 @@ def _fallback_icon(name: str, color: str = "#20ffe0") -> QtGui.QIcon:
 
 
 def shell_icon(mod: Mod) -> QtGui.QIcon:
-    """取模组文件/网址的系统图标；取不到就画一个首字母方块。"""
+    """三方工具 / 网址先看官网图标缓存；程序取自身图标；都取不到画首字母方块。"""
     global _ICON_PROVIDER
-    key = ("url:" if mod.kind == KIND_URL else "file:") + mod.path.lower()
+    key = ("url:" if mod.kind in (KIND_URL, KIND_REMOTE) else "file:") + mod.path.lower()
     if key in _ICON_CACHE:
         return _ICON_CACHE[key]
+
+    fav = _try_favicon(mod)
+    if fav is not None:
+        _ICON_CACHE[key] = fav
+        return fav
 
     # 内置页面没文件可取图标，三角洲情报用自带的绿三角闪电
     if mod.kind == KIND_PAGE:
@@ -851,7 +872,7 @@ def shell_icon(mod: Mod) -> QtGui.QIcon:
                     return icon
 
     icon = QtGui.QIcon()
-    if mod.kind != KIND_URL:
+    if mod.kind not in (KIND_URL, KIND_REMOTE):
         try:
             if _ICON_PROVIDER is None:
                 _ICON_PROVIDER = QtWidgets.QFileIconProvider()
@@ -937,7 +958,7 @@ class ModTile(QtWidgets.QFrame):
             "border-radius:5px; padding:1px 4px; font-size:9.5px;"
         )
         self.badge.adjustSize()
-        builtin = self.mod.kind != KIND_URL and not Path(self.mod.path).is_absolute()
+        builtin = self.mod.kind not in (KIND_URL, KIND_REMOTE) and not Path(self.mod.path).is_absolute()
         self.badge.setVisible(builtin)
         if builtin:
             self.badge.move(self.W - self.badge.width() - 7, 7)
@@ -969,6 +990,11 @@ class ModTile(QtWidgets.QFrame):
     def _act(self) -> None:
         if not self.mod.enabled:
             self.win.toast("这个模组被屏蔽了，右键「允许框架启动」可以打开", False)
+            return
+        if self.mod.kind == KIND_REMOTE:
+            self.win.open_remote(self.mod)
+            self.refresh()
+            self.changed.emit()
             return
         if self.mod.kind == KIND_EXE and self.guard.is_running(self.mod):
             ok, msg = self.guard.stop(self.mod)
@@ -1019,7 +1045,7 @@ class ModTile(QtWidgets.QFrame):
         a_auto.triggered.connect(self._on_autostart)
 
         m.addSeparator()
-        if self.mod.kind not in (KIND_URL, KIND_PAGE):
+        if self.mod.kind not in (KIND_URL, KIND_PAGE, KIND_REMOTE):
             a_dir = m.addAction("在文件夹中打开")
             a_dir.setEnabled(self.mod.exists)
             a_dir.triggered.connect(
@@ -1048,6 +1074,8 @@ class ModTile(QtWidgets.QFrame):
             tip = "文件不在了：换盘或挪过目录？右键编辑重新指一下"
         elif self.mod.kind == KIND_PAGE:
             txt, color = "打开页面", "#8a7bd4"
+        elif self.mod.kind == KIND_REMOTE:
+            txt, color = ("三方·下载" if self.mod.dl else "三方·官网"), "#8a7bd4"
         elif self.mod.kind != KIND_EXE:
             txt, color = "网页", "#8a7bd4"
         elif running:
@@ -1196,6 +1224,11 @@ class ModCard(QtWidgets.QFrame):
         self.cfg.save()
 
     def _on_action(self) -> None:
+        if self.mod.kind == KIND_REMOTE:
+            self.win.open_remote(self.mod)
+            self.refresh()
+            self.changed.emit()
+            return
         if self.mod.kind == KIND_EXE and self.guard.is_running(self.mod):
             ok, msg = self.guard.stop(self.mod)
             self.win.toast(msg, ok)
@@ -1219,12 +1252,14 @@ class ModCard(QtWidgets.QFrame):
         raw = self.mod.path
         if self.mod.kind == KIND_PAGE:
             raw = "内置页面 · 不启动外部程序"
+        elif self.mod.kind == KIND_REMOTE:
+            host = (urllib.parse.urlparse(raw).netloc or raw).strip()
+            raw = "官网 · " + host + ("（有直链，可直接下载）" if self.mod.dl else "（自己下载）")
         elif self.mod.kind != KIND_URL and not Path(raw).is_absolute():
             raw = "内置 · " + raw.replace("/", chr(92))
-        fm = self.path_label.fontMetrics()
-        width = max(220, self.width() - 330) if self.width() > 0 else 320
-        self.path_label.setText(fm.elidedText(raw, Qt.ElideMiddle, width))
+        self._path_raw = raw
         self.path_label.setToolTip(raw)
+        self._elide_path()
 
         running = self.mod.enabled and self.guard.is_running(self.mod)
         missing = self.mod.enabled and not self.mod.exists
@@ -1238,6 +1273,14 @@ class ModCard(QtWidgets.QFrame):
             self.status_label.setText("● 内置页面")
             self.status_label.setStyleSheet("color:#8a7bd4; font-size:11px;")
             self.status_label.setToolTip("内置页面：点按钮直接切过去，不启动外部程序")
+        elif self.mod.kind == KIND_REMOTE:
+            self.status_label.setText("● 三方工具")
+            self.status_label.setStyleSheet("color:#8a7bd4; font-size:11px;")
+            self.status_label.setToolTip(
+                "点一下由燧镜下载，下完自动变成工具"
+                if self.mod.dl
+                else "点一下打开官网，自己下载后用「+ 添加工具」指过来"
+            )
         elif self.mod.kind != KIND_EXE:
             self.status_label.setText("● 网页")
             self.status_label.setStyleSheet("color:#8a7bd4; font-size:11px;")
@@ -1255,14 +1298,18 @@ class ModCard(QtWidgets.QFrame):
             self.status_label.setStyleSheet("color:#5f6878; font-size:11px;")
             self.status_label.setToolTip("")
 
-        if self.mod.kind != KIND_EXE:
+        if self.mod.kind == KIND_REMOTE:
+            self.action_btn.setText("下载" if self.mod.dl else "官网")
+        elif self.mod.kind != KIND_EXE:
             self.action_btn.setText("打开")
         elif running:
             self.action_btn.setText("停止")
         else:
             self.action_btn.setText("启动")
 
-        self.action_btn.setEnabled(self.mod.enabled and (not missing or self.mod.kind == KIND_URL))
+        self.action_btn.setEnabled(
+            self.mod.enabled and (not missing or self.mod.kind in (KIND_URL, KIND_REMOTE))
+        )
         self.name_label.setStyleSheet(
             "font-size: 13.5px; font-weight: 600; color: %s;"
             % ("#e6ebf3" if self.mod.enabled else "#525b69")
@@ -1271,6 +1318,21 @@ class ModCard(QtWidgets.QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()
+
+    def _elide_path(self) -> None:
+        """路径太长就在中间省略，别顶到右边的「程序 / 未运行 / 启动」上去。"""
+        raw = getattr(self, "_path_raw", "")
+        if not raw:
+            return
+        fixed = 24
+        for w in (self.kind_label, self.status_label, self.action_btn):
+            fixed += w.sizeHint().width() + 10
+        fixed += 96  # 右边的 ✕ 按钮 + 卡片内边距
+        avail = max(90, self.width() - fixed)
+        if self.path_label.maximumWidth() != avail:
+            self.path_label.setFixedWidth(avail)
+        fm = self.path_label.fontMetrics()
+        self.path_label.setText(fm.elidedText(raw, Qt.ElideMiddle, avail))
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -1353,6 +1415,175 @@ class AddModDialog(QtWidgets.QDialog):
                 return
         self.result_path = path
         self.result_name = self.name_edit.text().strip() or Path(path).stem
+        self.accept()
+
+
+# ---------------------------------------------------------------------------
+# 三方工具：官网链接 + 直链下载
+# ---------------------------------------------------------------------------
+_FIELD_QSS = (
+    "background:#1a1f29; border:1px solid #2c3543; border-radius:8px;"
+    " padding:7px 10px; color:#dfe5ef;"
+)
+
+
+def _downloads_dir() -> Path:
+    """三方工具下载到「文档\\燧镜\\tools」，卸载软件不会跟着丢。"""
+    base = Path(os.path.expanduser("~")) / "Documents" / "燧镜" / "tools"
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        base = app_dir() / "downloads"
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+    return base
+
+
+def _safe_folder(name: str) -> str:
+    bad = '<>:"/\\|?*'
+    out = "".join("_" if c in bad else c for c in (name or "")).strip()
+    return (out or "tool")[:40]
+
+
+def _guess_filename(url: str) -> str:
+    """从直链里扒文件名；扒不到就叫 download.bin。"""
+    try:
+        p = urllib.parse.urlparse(url)
+        name = Path(urllib.parse.unquote(p.path)).name
+    except Exception:  # noqa: BLE001
+        name = ""
+    return name or "download.bin"
+
+
+class _RemoteDownload(QtCore.QThread):
+    """下载线程：只管搬字节，进度靠信号回主线程。"""
+
+    progress = QtCore.Signal(int, int)  # 已下 / 总大小（0 = 服务器没给长度）
+    ok = QtCore.Signal(str)             # 落地文件路径
+    bad = QtCore.Signal(str)            # 失败原因
+
+    def __init__(self, url: str, dest: Path, parent=None):
+        super().__init__(parent)
+        self.url = url
+        self.dest = dest
+        self._stop = False
+
+    def stop(self) -> None:
+        self._stop = True
+
+    def run(self) -> None:
+        try:
+            req = urllib.request.Request(
+                self.url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FlintMirror",
+                    "Accept": "*/*",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                total = int(resp.headers.get("Content-Length") or 0)
+                got = 0
+                with open(self.dest, "wb") as f:
+                    while not self._stop:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        got += len(chunk)
+                        self.progress.emit(got, total)
+            if self._stop:
+                try:
+                    self.dest.unlink()
+                except OSError:
+                    pass
+                self.bad.emit("已取消")
+                return
+            self.ok.emit(str(self.dest))
+        except Exception as exc:  # noqa: BLE001
+            self.bad.emit(str(exc)[:200])
+
+
+class AddRemoteDialog(QtWidgets.QDialog):
+    """加一条「三方工具」：名称 + 官网（必填）+ 直接下载地址（可空）。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("添加三方工具")
+        self.setMinimumWidth(560)
+        self.setStyleSheet(qss())
+        self.result_name = ""
+        self.result_home = ""
+        self.result_dl = ""
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(10)
+
+        tip = QtWidgets.QLabel(
+            "只填官网也能加：点卡片就是开浏览器。\n"
+            "要是知道安装包的直链，填第三行 —— 那样点一下燧镜自己下，"
+            "下完（exe）自动变成工具页里的一条本地工具。"
+        )
+        tip.setWordWrap(True)
+        tip.setObjectName("Small")
+        lay.addWidget(tip)
+
+        lay.addWidget(self._lab("名称"))
+        self.name_edit = QtWidgets.QLineEdit()
+        self.name_edit.setPlaceholderText("例如 图吧工具箱")
+        self.name_edit.setStyleSheet(_FIELD_QSS)
+        lay.addWidget(self.name_edit)
+
+        lay.addWidget(self._lab("官网地址（必填）"))
+        self.home_edit = QtWidgets.QLineEdit()
+        self.home_edit.setPlaceholderText("https://…（点卡片会打开这里）")
+        self.home_edit.setStyleSheet(_FIELD_QSS)
+        lay.addWidget(self.home_edit)
+
+        lay.addWidget(self._lab("直接下载地址（可空）"))
+        self.dl_edit = QtWidgets.QLineEdit()
+        self.dl_edit.setPlaceholderText("https://…/setup.exe 或 .zip；留空就只开官网")
+        self.dl_edit.setStyleSheet(_FIELD_QSS)
+        lay.addWidget(self.dl_edit)
+
+        btns = QtWidgets.QHBoxLayout()
+        btns.addStretch(1)
+        cancel = QtWidgets.QPushButton("取消")
+        cancel.setObjectName("Ghost")
+        cancel.clicked.connect(self.reject)
+        ok = QtWidgets.QPushButton("添加")
+        ok.setObjectName("Primary")
+        ok.clicked.connect(self._accept)
+        btns.addWidget(cancel)
+        btns.addWidget(ok)
+        lay.addLayout(btns)
+
+    @staticmethod
+    def _lab(text: str) -> QtWidgets.QLabel:
+        lab = QtWidgets.QLabel(text)
+        lab.setObjectName("Small")
+        return lab
+
+    def _accept(self) -> None:
+        name = self.name_edit.text().strip()
+        home = self.home_edit.text().strip().strip('"')
+        dl = self.dl_edit.text().strip().strip('"')
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "提示", "给这条三方工具起个名字。")
+            return
+        if not (home.lower().startswith("http://") or home.lower().startswith("https://")):
+            QtWidgets.QMessageBox.warning(self, "提示", "官网地址要以 http:// 或 https:// 开头。")
+            return
+        if dl and not (dl.lower().startswith("http://") or dl.lower().startswith("https://")):
+            QtWidgets.QMessageBox.warning(
+                self, "提示", "下载地址要以 http:// 或 https:// 开头（拿不到直链就留空）。"
+            )
+            return
+        self.result_name = name
+        self.result_home = home
+        self.result_dl = dl
         self.accept()
 
 
@@ -11897,6 +12128,36 @@ class MainWindow(QtWidgets.QWidget):
         empty.setWordWrap(True)
         return empty
 
+    def _group_head(self, title: str, hint: str = "") -> QtWidgets.QWidget:
+        """分组横线：左边「三方工具」，右边一条细线把两拨分开。"""
+        w = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(w)
+        row.setContentsMargins(2, 12, 2, 2)
+        row.setSpacing(8)
+        lab = QtWidgets.QLabel(title)
+        lab.setStyleSheet("color:#8a7bd4; font-size:11.5px; font-weight:600;")
+        row.addWidget(lab)
+        if hint:
+            h = QtWidgets.QLabel(hint)
+            h.setObjectName("Small")
+            row.addWidget(h)
+        line = QtWidgets.QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background:#2a3240;")
+        row.addWidget(line, 1)
+        return w
+
+    def _grid_group(self, mods) -> FlowPage:
+        page = FlowPage()
+        flow = FlowLayout(page, margin=0, hspacing=8, vspacing=8)
+        page.flow = flow
+        for mod in mods:
+            tile = ModTile(mod, self.guard, self.cfg, self)
+            tile.changed.connect(self._on_mods_changed)
+            self.tiles.append(tile)
+            flow.addWidget(tile)
+        return page
+
     def rebuild_mods(self) -> None:
         while self.mod_root.count():
             item = self.mod_root.takeAt(0)
@@ -11907,53 +12168,121 @@ class MainWindow(QtWidgets.QWidget):
         self.tiles.clear()
         self._sync_seg()
 
-        page = None
+        # 已落地的（本地程序 / 网页 / 内置页面）和没下载的三方工具分开排
+        local = [m for m in self.cfg.mods if m.kind != KIND_REMOTE]
+        remote = [m for m in self.cfg.mods if m.kind == KIND_REMOTE]
+
         if self.cfg.view_mode == "grid":
-            page = FlowPage()
-            flow = FlowLayout(page, margin=0, hspacing=8, vspacing=8)
-            page.flow = flow
-            for mod in self.cfg.mods:
-                tile = ModTile(mod, self.guard, self.cfg, self)
-                tile.changed.connect(self._on_mods_changed)
-                self.tiles.append(tile)
-                flow.addWidget(tile)
             if not self.cfg.mods:
+                page = FlowPage()
+                flow = FlowLayout(page, margin=0, hspacing=8, vspacing=8)
+                page.flow = flow
                 flow.addWidget(self._make_empty())
-            self.mod_root.addWidget(page, 0, Qt.AlignTop)
+                self.mod_root.addWidget(page, 0, Qt.AlignTop)
+            else:
+                if local:
+                    self.mod_root.addWidget(self._grid_group(local), 0, Qt.AlignTop)
+                if remote:
+                    if local:
+                        self.mod_root.addWidget(
+                            self._group_head("三方工具", "没下载 · 点一格去官网"),
+                            0,
+                            Qt.AlignTop,
+                        )
+                    self.mod_root.addWidget(self._grid_group(remote), 0, Qt.AlignTop)
         else:
             page = QtWidgets.QWidget()
             col = QtWidgets.QVBoxLayout(page)
             col.setContentsMargins(0, 0, 0, 0)
             col.setSpacing(8)
-            for mod in self.cfg.mods:
-                card = ModCard(mod, self.guard, self.cfg, self)
-                card.changed.connect(self._on_mods_changed)
-                self.cards.append(card)
-                col.addWidget(card)
             if not self.cfg.mods:
                 col.addWidget(self._make_empty())
+            else:
+                for mod in local:
+                    card = ModCard(mod, self.guard, self.cfg, self)
+                    card.changed.connect(self._on_mods_changed)
+                    self.cards.append(card)
+                    col.addWidget(card)
+                if remote:
+                    if local:
+                        col.addWidget(self._group_head("三方工具", "没下载 · 点卡片去官网"))
+                    for mod in remote:
+                        card = ModCard(mod, self.guard, self.cfg, self)
+                        card.changed.connect(self._on_mods_changed)
+                        self.cards.append(card)
+                        col.addWidget(card)
             col.addStretch(1)
             self.mod_root.addWidget(page)
 
         enabled = sum(1 for m in self.cfg.mods if m.enabled)
         self.mod_count.setText(f"{enabled} / {len(self.cfg.mods)} 已启用")
         QTimer.singleShot(0, self._fit_mod_host)
+        QTimer.singleShot(0, self._ensure_favicons)
+
+    def _ensure_favicons(self) -> None:
+        """三方工具 / 网址类没图标时，后台去官网扒一次，扒回来重建换上去。"""
+        th = getattr(self, "_fav_thread", None)
+        if th is not None and th.isRunning():
+            return
+        seen = getattr(self, "_fav_seen", None)
+        if seen is None:
+            seen = self._fav_seen = set()
+        need = []
+        for m in self.cfg.mods:
+            if m.kind not in (KIND_REMOTE, KIND_URL):
+                continue
+            host = (urllib.parse.urlparse(m.path or "").netloc or "").strip()
+            if not host or host in seen:
+                continue
+            if _favicon_file(host) is not None:
+                continue
+            seen.add(host)
+            need.append(host)
+        if not need:
+            return
+        self._fav_thread = _FaviconFetcher(need, self)
+        self._fav_thread.done.connect(self._on_favicons_done)
+        self._fav_thread.start()
+
+    def _on_favicons_done(self, got: int) -> None:
+        _ICON_CACHE.clear()
+        self.rebuild_mods()
+        if got:
+            self.toast(f"已抓到 {got} 个官网图标", True)
 
     def _fit_mod_host(self) -> None:
         """图标视图内容不满一屏时，别留一块空的可滚动区域。"""
         if not self.mod_root.count():
             return
-        page = self.mod_root.itemAt(0).widget()
-        if page is None:
-            return
-        if self.cfg.view_mode == "grid":
-            h = page.height()
-            if h <= 0:
-                h = page.sizeHint().height()
-            self.mod_host.setFixedHeight(max(1, h))
-        else:
+        if self.cfg.view_mode != "grid":
             self.mod_host.setMinimumHeight(0)
             self.mod_host.setMaximumHeight(16777215)
+            return
+        avail = self.mod_host.width()
+        view = getattr(self.mod_host, "viewport", None)
+        if callable(view):
+            avail = view().width()
+        if avail < 200:
+            avail = 200
+        total = 0
+        for i in range(self.mod_root.count()):
+            w = self.mod_root.itemAt(i).widget()
+            if w is None:
+                continue
+            flow = getattr(w, "flow", None)
+            if flow is not None:
+                h = flow.heightForWidth(avail)
+                if h <= 0:
+                    h = w.sizeHint().height()
+                w.setFixedHeight(max(1, h))
+            else:
+                h = w.sizeHint().height()
+                if h <= 0:
+                    h = w.height()
+                w.setFixedHeight(max(1, h))
+            total += max(1, h)
+        total += self.mod_root.spacing() * max(0, self.mod_root.count() - 1)
+        self.mod_host.setFixedHeight(max(1, total))
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -12091,12 +12420,30 @@ class MainWindow(QtWidgets.QWidget):
             self.toast("清单里没有可导入的模组", False)
 
     def add_mod(self) -> None:
+        """「+ 添加工具」：先问一句是本地程序，还是挂官网链接的三方工具。"""
+        m = QtWidgets.QMenu(self)
+        m.addAction("本地程序 / 网页…", self._add_local_mod)
+        m.addAction("三方工具（填官网链接）…", self._add_remote_mod)
+        m.exec(QtGui.QCursor.pos())
+
+    def _add_local_mod(self) -> None:
         dlg = AddModDialog(self)
         if dlg.exec() == QtWidgets.QDialog.Accepted:
             self.cfg.add_mod(dlg.result_name, dlg.result_path)
             self.rebuild_mods()
             self._on_mods_changed()
-            self.toast("已添加模组：" + dlg.result_name, True)
+            self.toast("已添加工具：" + dlg.result_name, True)
+
+    def _add_remote_mod(self) -> None:
+        dlg = AddRemoteDialog(self)
+        if dlg.exec() != QtWidgets.QDialog.Accepted:
+            return
+        self.cfg.add_mod(
+            dlg.result_name, dlg.result_home, kind=KIND_REMOTE, dl=dlg.result_dl
+        )
+        self.rebuild_mods()
+        self._on_mods_changed()
+        self.toast("已添加三方工具：" + dlg.result_name, True)
 
     # ------------------------------------------------------------------
     # 分辨率
@@ -14444,7 +14791,88 @@ class MainWindow(QtWidgets.QWidget):
     # ------------------------------------------------------------------
     # 模组启动（统一处理延迟）
     # ------------------------------------------------------------------
+    def open_remote(self, mod: Mod) -> None:
+        """三方工具：有直链就在软件里下载，没直链就打开官网。"""
+        home = (mod.path or "").strip()
+        dl = (getattr(mod, "dl", "") or "").strip()
+        if not dl:
+            if home:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl(home))
+                self.toast(f"已打开 {mod.name} 官网；下好后用「+ 添加工具」指过来")
+            else:
+                self.toast("这条三方工具没填官网地址", False)
+            return
+
+        worker = getattr(mod, "_dl_worker", None)
+        if worker is not None and worker.isRunning():
+            self.toast("正在下载，等它下完")
+            return
+
+        dest_dir = _downloads_dir() / _safe_folder(mod.name)
+        try:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self.toast("建下载目录失败：" + str(exc), False)
+            return
+
+        dest = dest_dir / _guess_filename(dl)
+        if dest.exists():
+            stem, suffix = dest.stem, dest.suffix
+            i = 1
+            while (dest_dir / f"{stem}_{i}{suffix}").exists():
+                i += 1
+            dest = dest_dir / f"{stem}_{i}{suffix}"
+
+        w = _RemoteDownload(dl, dest, self)
+        mod._dl_worker = w
+        mod._dl_pct = -10
+        mod._dl_mb = -5
+        self.toast(f"开始下载 {mod.name}…")
+
+        def _on_prog(got: int, total: int) -> None:
+            if total > 0:
+                pct = int(got * 100 / total)
+                if pct - getattr(mod, "_dl_pct", -10) >= 10:
+                    mod._dl_pct = pct
+                    self.toast(f"{mod.name} 下载中 {pct}%")
+            else:
+                mb = got / 1048576
+                if mb - getattr(mod, "_dl_mb", -5) >= 5:
+                    mod._dl_mb = mb
+                    self.toast(f"{mod.name} 已下载 {mb:.0f} MB")
+
+        w.progress.connect(_on_prog)
+        w.ok.connect(lambda p: self._on_remote_done(mod, p))
+        w.bad.connect(lambda e: self._on_remote_fail(mod, e))
+        w.start()
+
+    def _on_remote_done(self, mod: Mod, path: str) -> None:
+        mod._dl_worker = None
+        p = Path(path)
+        if p.suffix.lower() == ".exe":
+            # exe 直接落地：这条三方工具就地变成本地工具，工具页里点启动就行
+            mod.kind = KIND_EXE
+            mod.path = str(p)
+            mod.dl = ""
+            mod.note = (mod.note + " · 来自官网").strip(" ·") if mod.note else "来自官网"
+            self.cfg.save()
+            self.rebuild_mods()
+            self._on_mods_changed()
+            self.toast(f"下载完成，已加入工具：{mod.name}", True)
+        else:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(p.parent)))
+            self.toast(
+                f"下载好了（{p.name}）。压缩包要先解压，再用「+ 添加工具」选里面的 exe", True
+            )
+
+    def _on_remote_fail(self, mod: Mod, err: str) -> None:
+        mod._dl_worker = None
+        self.toast(f"{mod.name} 下载失败：{err}", False)
+
     def launch_mod(self, mod: Mod) -> None:
+        if mod.kind == KIND_REMOTE:
+            self.open_remote(mod)
+            return
         if mod.kind == KIND_PAGE:
             self.show_page_mod(mod)
             return

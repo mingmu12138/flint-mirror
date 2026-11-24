@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 10, 0, 0),
-    prodvers=(1, 10, 0, 0),
+    filevers=(1, 10, 1, 0),
+    prodvers=(1, 10, 1, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
           '080404B0',
           [StringStruct('CompanyName', '布鲁托是小馋猫'),
            StringStruct('FileDescription', '燧镜 FLINT MIRROR'),
-           StringStruct('FileVersion', '1.10.0.0'),
+           StringStruct('FileVersion', '1.10.1.0'),
            StringStruct('InternalName', 'FlintMirror'),
            StringStruct('LegalCopyright', '作者：布鲁托是小馋猫'),
            StringStruct('OriginalFilename', '燧镜.exe'),
            StringStruct('ProductName', '燧镜'),
-           StringStruct('ProductVersion', '1.10.0.0')])
+           StringStruct('ProductVersion', '1.10.1.0')])
       ]),
     VarFileInfo([VarStruct('Translation', [2052, 1200])])
   ]

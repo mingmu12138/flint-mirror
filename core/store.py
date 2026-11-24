@@ -47,6 +47,8 @@ CONFIG_NAME = "config.json"
 KIND_EXE = "exe"
 KIND_HTML = "html"
 KIND_URL = "url"
+# 三方工具：path 存官网地址，dl 存直链（可空）；没直链就开浏览器，有直链就软件内下载
+KIND_REMOTE = "remote"
 # 内置页面：不是外部程序，点一下切到软件自己的某个页面
 KIND_PAGE = "page"
 
@@ -54,6 +56,7 @@ KIND_LABEL = {
     KIND_EXE: "程序",
     KIND_HTML: "网页",
     KIND_URL: "网址",
+    KIND_REMOTE: "三方工具",
     KIND_PAGE: "内置",
 }
 
@@ -90,6 +93,8 @@ class Mod:
     name: str
     path: str
     kind: str = KIND_EXE
+    # 三方工具的直链下载地址（只有 kind == remote 用得上；空 = 只挂官网）
+    dl: str = ""
     args: List[str] = field(default_factory=list)
     enabled: bool = True
     autostart: bool = False
@@ -110,7 +115,7 @@ class Mod:
     @property
     def resolved(self) -> str:
         """真实路径：相对路径按程序目录展开（内置模组就是打包进来的那一份）。"""
-        if self.kind in (KIND_URL, KIND_PAGE):
+        if self.kind in (KIND_URL, KIND_PAGE, KIND_REMOTE):
             return self.path
         try:
             path = Path(self.path)
@@ -122,7 +127,7 @@ class Mod:
 
     @property
     def exists(self) -> bool:
-        if self.kind in (KIND_URL, KIND_PAGE):
+        if self.kind in (KIND_URL, KIND_PAGE, KIND_REMOTE):
             return True
         try:
             return Path(self.resolved).exists()
@@ -139,6 +144,7 @@ class Mod:
             "name": self.name,
             "path": self.path,
             "kind": self.kind,
+            "dl": self.dl,
             "args": list(self.args),
             "enabled": bool(self.enabled),
             "autostart": bool(self.autostart),
@@ -154,6 +160,7 @@ class Mod:
             name=str(d.get("name") or Path(path).stem or "未命名模组"),
             path=path,
             kind=str(d.get("kind") or guess_kind(path)),
+            dl=str(d.get("dl") or ""),
             args=list(d.get("args") or []),
             enabled=bool(d.get("enabled", True)),
             autostart=bool(d.get("autostart", False)),
@@ -553,6 +560,8 @@ class Config:
         self.tray_tip_shown: bool = False
         # 模组区的展示方式："list" 列表 / "grid" 图标
         self.view_mode: str = "list"
+        # 「模组」页的展示方式（.sjmod 那套）：默认宫格
+        self.mod_view_mode: str = "grid"
         self.mods: List[Mod] = []
         # 自定义自动化规则 / 开机自启
         self.rules: List[Rule] = []
@@ -686,6 +695,9 @@ class Config:
 
         mode = str(raw.get("view_mode") or "list").lower()
         self.view_mode = mode if mode in ("list", "grid") else "list"
+
+        mmode = str(raw.get("mod_view_mode") or "grid").lower()
+        self.mod_view_mode = mmode if mmode in ("list", "grid") else "grid"
 
         mods_raw = raw.get("mods")
         if isinstance(mods_raw, list):
@@ -863,6 +875,7 @@ class Config:
             "clip_enabled": self.clip_enabled,
             "tray_tip_shown": self.tray_tip_shown,
             "view_mode": self.view_mode,
+            "mod_view_mode": self.mod_view_mode,
             "autostart": self.autostart,
             "stretch": self.stretch,
             "screen_device": self.screen_device,
@@ -913,10 +926,10 @@ class Config:
             pass
 
     # ---------- 模组增删 ----------
-    def add_mod(self, name: str, path: str) -> Mod:
+    def add_mod(self, name: str, path: str, kind: str = "", dl: str = "") -> Mod:
         path = str(path)
         mod = Mod(id=uuid.uuid4().hex[:8], name=name or Path(path).stem, path=path,
-                  kind=guess_kind(path), enabled=True)
+                  kind=kind or guess_kind(path), dl=str(dl or ""), enabled=True)
         self.mods.append(mod)
         self.save()
         return mod
