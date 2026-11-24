@@ -1,0 +1,11 @@
+{
+  "id": "com.flint.hello",
+  "name": "示例模组 Hello",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "author": "燧镜",
+  "description": "最小可用示例：启用时弹一条通知，收到游戏启动事件时记日志。照着改就是你的模组。",
+  "kind": "package",
+  "entry": "main.py",
+  "permissions": ["notify", "events"]
+}

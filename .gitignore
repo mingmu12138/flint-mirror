@@ -31,7 +31,13 @@ logs/
 收到/
 _cast_shots/
 _gm_shots/
+_shots/
+_gh_release.png
 delta_cache.json
+
+# 模组运行时状态（每台机器不一样，别进仓库）
+mod_state.json
+mods_data/
 
 # 个人配置（含本机路径）
 config.json

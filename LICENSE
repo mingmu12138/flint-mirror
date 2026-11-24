@@ -1,21 +1,120 @@
-MIT License
+燧镜个人非商业许可 v1.0
+Flint Mirror Personal Non-Commercial License v1.0
 
-Copyright (c) 2026 燧镜 · FLINT MIRROR (mingmu12138)
+版权所有 (c) 2026 布鲁托是小馋猫（GitHub: mingmu12138）
+Copyright (c) 2026 布鲁托是小馋猫 (GitHub: mingmu12138)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+本许可适用于「燧镜 / Flint Mirror」项目的全部源代码、文档与随附资源
+（以下统称"本作品"）。使用、复制、修改或分发本作品，即视为接受本许可全部条款。
+This license applies to all source code, documentation and bundled resources of
+the "Flint Mirror" project (the "Work"). Using, copying, modifying or
+distributing the Work means you accept all terms below.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+------------------------------------------------------------------
+第一条 授权范围 / Section 1 — Grant
+------------------------------------------------------------------
+在遵守本许可的前提下，允许你：
+  1. 下载、阅读、编译、运行本作品；
+  2. 出于个人学习、技术研究、非盈利目的修改本作品；
+  3. 在非盈利前提下分享本作品的原始副本或你的修改版本，但必须保留本许可全文、
+     注明原作者，并同样以本许可授权下游使用者。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Subject to this license, you may download, read, compile and run the Work; modify
+it for personal study, technical research or other non-commercial purposes; and
+share the original or modified Work on a non-commercial basis, provided this
+license is kept intact, the original author is credited, and downstream users are
+bound by the same terms.
+
+------------------------------------------------------------------
+第二条 禁止商业使用 / Section 2 — No Commercial Use
+------------------------------------------------------------------
+严禁任何企业、机构、团队、商业主体将本作品（含其修改版、衍生版、
+打包版）用于任何形式的商业用途或盈利活动，包括但不限于：
+  a) 销售、租赁、订阅收费，或作为付费产品/服务的一部分提供；
+  b) 内置或捆绑进商业软件、商业硬件、商业解决方案对外交付；
+  c) 用于企业内部生产、经营活动，或对外提供有偿技术支持；
+  d) 以本作品或其修改版投放广告、引流、带货、付费社群等变现行为。
+
+如确需商用，必须事先联系作者取得**书面授权**，并按双方约定另行签约。
+未取得书面授权的任何商用行为均属侵权。
+
+Any company, organization, team or commercial entity is strictly prohibited from
+using the Work (including modified, derivative or repackaged versions) for any
+commercial purpose or profit-making activity, including selling, licensing,
+subscription, bundling into commercial products, internal productive use, paid
+support, advertising or any other monetization. Commercial use requires prior
+written authorization from the author.
+
+------------------------------------------------------------------
+第三条 再分发 / Section 3 — Redistribution
+------------------------------------------------------------------
+1. 允许非商业再分发，但必须：
+   a) 保留本许可全文与作者署名；
+   b) 明确标注是否修改过，不得冒充原作者发布；
+   c) 不得移除或篡改程序内的作者信息、赞赏入口与关于页面。
+2. 禁止将本作品上传至任何需要付费才能下载的平台，或用于换取积分、
+   会员、下载券等任何形式的对价。
+
+Non-commercial redistribution is allowed only if this license and the author
+credit are preserved, modifications are clearly stated, and no author
+information, donation entry or about page is removed or altered. Paid download
+platforms and any form of consideration are prohibited.
+
+------------------------------------------------------------------
+第四条 名称与标识 / Section 4 — Name and Marks
+------------------------------------------------------------------
+「燧镜」「Flint Mirror」及本项目使用的图标、徽标，均为作者在先使用的名称与标识。
+禁止任何人（含企业、机构、个人）将上述名称及任何近似名称、近似标识，
+抢注为商标、品牌、商号、应用名、域名、账号名，或用于造成来源混淆的宣传。
+作者保留追究抢注行为法律责任的权利。
+
+"燧镜" and "Flint Mirror", together with the project icon and logo, are prior-use
+names and marks of the author. Nobody may register these or confusingly similar
+names as trademarks, brands, trade names, app names, domains or account names,
+or use them in a way that causes source confusion.
+
+------------------------------------------------------------------
+第五条 打赏与许可无关 / Section 5 — Donations
+------------------------------------------------------------------
+本项目设有完全自愿的打赏 / 投喂通道。打赏仅用于支持作者继续维护，
+性质为无偿赠与，**不构成任何商业授权、购买、订阅或服务合同**，
+也不赋予打赏者任何超出本许可的权利。
+
+Donations are entirely voluntary and serve only to support maintenance. They
+are gratuitous gifts and do not constitute any commercial license, purchase,
+subscription or service contract, nor grant any rights beyond this license.
+
+------------------------------------------------------------------
+第六条 第三方组件 / Section 6 — Third-Party Components
+------------------------------------------------------------------
+本作品随附或调用的第三方组件（如 qBittorrent、scrcpy、adb、ffmpeg、
+PySide6 等）各自遵循其原有许可证，不受本许可约束。
+分发或使用这些组件时，请自行遵守其对应许可条款。
+
+Third-party components bundled with or invoked by the Work (e.g. qBittorrent,
+scrcpy, adb, ffmpeg, PySide6) remain under their own licenses and are not
+governed by this license.
+
+------------------------------------------------------------------
+第七条 免责与终止 / Section 7 — Disclaimer and Termination
+------------------------------------------------------------------
+1. 本作品按"现状"提供，不附带任何明示或默示担保。作者不对使用本作品
+   造成的任何直接或间接损失负责，包括但不限于数据丢失、设备损坏、
+   账号处罚、游戏封禁、收益损失。
+2. 你违反本许可任一条款时，本许可自动终止，你必须立即停止使用并删除
+   本作品的全部副本。
+3. 本许可未授予的权利，均由作者保留。
+4. 本许可条款以中文版本为准。
+
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. THE AUTHOR IS NOT
+LIABLE FOR ANY DIRECT OR INDIRECT DAMAGES ARISING FROM ITS USE, INCLUDING DATA
+LOSS, DEVICE DAMAGE, ACCOUNT PENALTIES, GAME BANS OR LOST PROFITS. THIS LICENSE
+TERMINATES AUTOMATICALLY UPON ANY VIOLATION, AND YOU MUST IMMEDIATELY STOP USING
+AND DELETE ALL COPIES. ALL RIGHTS NOT EXPRESSLY GRANTED ARE RESERVED. THE
+CHINESE VERSION OF THIS LICENSE PREVAILS.
+
+------------------------------------------------------------------
+联系方式 / Contact
+------------------------------------------------------------------
+商用授权、合作或其他事宜，请通过项目主页联系作者：
+GitHub: https://github.com/mingmu12138/flint-mirror

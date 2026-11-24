@@ -100,7 +100,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.9.7"
+APP_VERSION = "v1.10.0"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -11250,14 +11250,23 @@ class MainWindow(QtWidgets.QWidget):
         self.mods_lay.setSpacing(10)
         self.stack.addWidget(self.mods_page)
 
+        # 新框架的模组页：只认 .sjmod 包。外层程序仍然归上面的「工具」页。
+        self.mod_page = QtWidgets.QWidget()
+        self.mod_page.setObjectName("Page")
+        self.mod_lay = QtWidgets.QVBoxLayout(self.mod_page)
+        self.mod_lay.setContentsMargins(18, 4, 18, 12)
+        self.mod_lay.setSpacing(10)
+        self.stack.addWidget(self.mod_page)
+
         # 页签行：切页（主页 / 工具 / 模组 / 情报 / 素材）+ 右边两个管理动作
         nav_row = QtWidgets.QHBoxLayout()
         nav_row.setSpacing(6)
         self._tab_btns = {}
         for attr, text in (
             ("home_scroll", "主页"),
-            ("tools_page", "工具"),
-            ("mods_page", "模组"),
+            ("tools_page", "内置工具"),
+            ("mods_page", "工具"),
+            ("mod_page", "模组"),
             ("music_page", "音乐"),
             ("steam_page", "Steam"),
             ("epic_page", "喜加一"),
@@ -11712,7 +11721,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # 模组区标题
         mod_head = QtWidgets.QHBoxLayout()
-        self.mod_title = QtWidgets.QLabel("模组")
+        self.mod_title = QtWidgets.QLabel("工具")
         self.mod_title.setObjectName("Section")
         mod_head.addWidget(self.mod_title)
         self.mod_count = QtWidgets.QLabel("")
@@ -11751,7 +11760,7 @@ class MainWindow(QtWidgets.QWidget):
         self.launch_all_btn.clicked.connect(self.launch_all_mods)
         mod_head.addWidget(self.launch_all_btn)
 
-        add_btn = QtWidgets.QPushButton("+ 添加模组")
+        add_btn = QtWidgets.QPushButton("+ 添加工具")
         add_btn.setObjectName("Ghost")
         add_btn.clicked.connect(self.add_mod)
         mod_head.addWidget(add_btn)
@@ -11760,7 +11769,7 @@ class MainWindow(QtWidgets.QWidget):
         self.mod_menu_btn = QtWidgets.QPushButton("⋯")
         self.mod_menu_btn.setObjectName("Ghost")
         self.mod_menu_btn.setFixedWidth(32)
-        self.mod_menu_btn.setToolTip("导出 / 导入模组清单（换台电脑不用一条条重加）")
+        self.mod_menu_btn.setToolTip("导出 / 导入工具清单（换台电脑不用一条条重加）")
         self.mod_menu_btn.clicked.connect(self.mod_menu)
         mod_head.addWidget(self.mod_menu_btn)
         self.mods_lay.addLayout(mod_head)
@@ -11776,13 +11785,26 @@ class MainWindow(QtWidgets.QWidget):
         self.scroll.setWidget(self.mod_host)
         self.mods_lay.addWidget(self.scroll, 1)
 
+        # 新框架模组页（只认 .sjmod）。这里出错也只是这一页空着，不影响其它页
+        self.mod_view = None
+        try:
+            from core.mod_ui import ModPage as _ModPage
+
+            self.mod_view = _ModPage(self, app_version=APP_VERSION)
+            self.mod_lay.addWidget(self.mod_view, 1)
+        except Exception as exc:  # noqa: BLE001
+            hint = QtWidgets.QLabel("模组页没起来：" + str(exc)[:120])
+            hint.setObjectName("Hint")
+            hint.setWordWrap(True)
+            self.mod_lay.addWidget(hint)
+
         # 底部提示
         foot = QtWidgets.QHBoxLayout()
         # 切音频时的左上角提示（顶层小窗，鼠标能穿过去）
         self.audio_osd = AudioOSD()
         self.audio_tray = None
 
-        self.toast_label = QtWidgets.QLabel("关闭窗口会收进托盘，模组不会被关掉。")
+        self.toast_label = QtWidgets.QLabel("关闭窗口会收进托盘，工具不会被关掉。")
         self.toast_label.setObjectName("Hint")
         self.toast_label.setWordWrap(True)
         # 热键冲突时这行会很长；能折行才不至于把整个窗口撑宽、把右边裁掉
@@ -11865,8 +11887,8 @@ class MainWindow(QtWidgets.QWidget):
 
     def _make_empty(self) -> QtWidgets.QLabel:
         empty = QtWidgets.QLabel(
-            "还没有模组\n\n"
-            "点右上角「+ 添加模组」，选一个 exe / bat / html，\n"
+            "还没有工具\n\n"
+            "点右上角「+ 添加工具」，选一个 exe / bat / html，\n"
             "或者直接粘贴一个网址\n\n"
             "加进来之后，这个框架就能统一启动、停止它们"
         )
@@ -11953,9 +11975,9 @@ class MainWindow(QtWidgets.QWidget):
 
     def mod_menu(self) -> None:
         m = QtWidgets.QMenu(self)
-        a = m.addAction("导出模组清单…")
+        a = m.addAction("导出工具清单…")
         a.triggered.connect(self.export_mods)
-        b = m.addAction("导入模组清单…")
+        b = m.addAction("导入工具清单…")
         b.triggered.connect(self.import_mods)
         m.exec(self.mod_menu_btn.mapToGlobal(self.mod_menu_btn.rect().bottomLeft()))
 
@@ -13703,7 +13725,7 @@ class MainWindow(QtWidgets.QWidget):
         QTimer.singleShot(4000, self._reset_toast)
 
     def _reset_toast(self) -> None:
-        self.toast_label.setText("关闭窗口会收进托盘，模组不会被关掉。")
+        self.toast_label.setText("关闭窗口会收进托盘，工具不会被关掉。")
         self.toast_label.setStyleSheet("")
 
     # ------------------------------------------------------------------
@@ -15410,7 +15432,7 @@ def run(show_panel: bool = True) -> int:
     mutex = ipc.acquire_mutex()
     if mutex is None:
         # 自检模式：无视已有实例，照常起界面（自检进程短命，不会常驻抢窗口）
-        if any(flag in sys.argv for flag in ("--shot", "--shot-about", "--rec-check", "--replay-check", "--audio-check", "--fps-check", "--main")):
+        if any(flag in sys.argv for flag in ("--shot", "--shot-page", "--shot-settings", "--shot-about", "--rec-check", "--replay-check", "--audio-check", "--fps-check", "--main")):
             pass
         elif "--tray" in sys.argv:
             return 0
@@ -15496,9 +15518,40 @@ def run(show_panel: bool = True) -> int:
                 print(f"截图已保存：{shot}")
             except Exception as exc:
                 print(f"截图失败：{exc}")
-            app.quit()
+            app.exit(0)
+            os._exit(0)
 
         QTimer.singleShot(1200, _grab)
+
+    # 自检截图：指定页面（--shot-page 页面属性名 文件），用来给模组页、工具页各自留档
+    pg_shot = None
+    pg_attr = ""
+    if "--shot-page" in sys.argv:
+        i = sys.argv.index("--shot-page")
+        if i + 2 < len(sys.argv):
+            pg_attr = sys.argv[i + 1]
+            pg_shot = sys.argv[i + 2]
+
+    if pg_shot:
+
+        def _grab_page_now():
+            try:
+                win.grab().save(pg_shot, "PNG")
+                print(f"截图已保存：{pg_shot}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"截图失败：{exc}")
+            app.exit(0)
+            os._exit(0)
+
+        def _grab_page():
+            try:
+                win._goto(pg_attr)
+                win.repaint()
+            except Exception as exc:  # noqa: BLE001
+                print(f"切页失败：{exc}")
+            QTimer.singleShot(700, _grab_page_now)
+
+        QTimer.singleShot(1200, _grab_page)
 
     # 自检截图：设置页（第二个参数可选：第几个分类，0 开始）
     st_shot = None

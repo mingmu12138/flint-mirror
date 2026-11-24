@@ -145,6 +145,13 @@ def main() -> int:
     if bundled.exists():
         shutil.copytree(bundled, target / "bundled")
 
+    # 内置模组包（.sjmod）：新模组页只认这个格式，跟着一起走
+    mods_builtin = ROOT / "mods" / "_builtin"
+    if mods_builtin.exists():
+        (target / "mods").mkdir(exist_ok=True)
+        shutil.copytree(mods_builtin, target / "mods" / "_builtin")
+        print(f"[信息] 内置模组包：{len(list(mods_builtin.iterdir()))} 个")
+
     # 干净配置：不写死分辨率、不带模组
     cfg = {
         "native": [0, 0, 0],

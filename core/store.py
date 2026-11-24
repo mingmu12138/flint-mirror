@@ -24,7 +24,8 @@ import psutil
 BUNDLED_DIR = "bundled"
 # (显示名, 相对路径, 启动参数)
 BUNDLED_MODS = [
-    ("口琴可视化曲谱", f"{BUNDLED_DIR}/口琴可视化曲谱/口琴可视化曲谱.exe", []),
+    # 口琴已经搬成 .sjmod 模组（mods/_builtin/com.flint.harmonica），
+    # 工具页不再放第二份，免得两个入口抢同一个进程
     # 手机音频接收：手机蓝牙连电脑，把手机的声当电脑输出（A2DP Sink）
     ("手机音频接收", f"{BUNDLED_DIR}/apc/AudioPlaybackConnector64.exe", []),
     # qBittorrent：BT 下载。--profile 让配置和缓存留在包内，不碰系统 %APPDATA%
@@ -385,7 +386,6 @@ def default_mods() -> List[Mod]:
     items = [
         ("灵引系统", desktop / "灵引系统历史版本" / "灵引系统v2.0" / "LingYin.exe"),
         ("聆域系统", desktop / "聆域系统历史版本" / "聆域V4.0" / "LingyuSystem.exe"),
-        ("口琴可视化曲谱", Path(BUNDLED_DIR) / "口琴可视化曲谱" / "口琴可视化曲谱.exe"),
         ("三角洲改枪码仓库", desktop / "三角洲改枪码仓库.html"),
     ]
     mods: List[Mod] = []
@@ -828,10 +828,13 @@ class Config:
                 )
             )
         # 投屏挪回主页方块之后，模组里那张同款卡不再保留（升级过的用户也一起清）
+        # 口琴搬成 .sjmod 模组之后同理：工具页那份摘掉，免得两个入口抢一个进程
         keep = []
         for m in self.mods:
             p = str(m.path or "").replace("\\", "/").lower()
             if m.kind == KIND_EXE and p.endswith("bundled/scrcpy/scrcpy.exe"):
+                continue
+            if m.kind == KIND_EXE and p.endswith("口琴可视化曲谱.exe"):
                 continue
             keep.append(m)
         self.mods = keep
