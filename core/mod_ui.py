@@ -40,23 +40,24 @@ PERM_TEXT = {
 
 
 def _peek_manifest(pkg: Path):
-    """不装、只读：从 zip 里捞出最外层那份 manifest.json。
+    """不装、只读：从 zip 里捞出最外层那份 manifest.json，顺便把包里的条目名带回去。
 
-    读不出来就返回 None，交给 install() 去报标准错误。
+    读不出来就返回 (None, 条目名)，交给 install() 去报标准错误。
     """
     try:
         with zipfile.ZipFile(pkg) as zf:
-            names = [n for n in zf.namelist() if n.lower().endswith("manifest.json")]
-            if not names:
-                return None
-            names.sort(key=lambda n: n.count("/"))   # 层级最浅的那份
-            raw = json.loads(zf.read(names[0]).decode("utf-8-sig"))
-            return raw if isinstance(raw, dict) else None
+            names = zf.namelist()
+            cands = [n for n in names if n.lower().endswith("manifest.json")]
+            if not cands:
+                return None, names
+            cands.sort(key=lambda n: n.count("/"))   # 层级最浅的那份
+            raw = json.loads(zf.read(cands[0]).decode("utf-8-sig"))
+            return (raw if isinstance(raw, dict) else None), names
     except (OSError, zipfile.BadZipFile, json.JSONDecodeError, UnicodeDecodeError):
-        return None
+        return None, []
 
 
-def _confirm_install(parent, raw: dict) -> bool:
+def _confirm_install(parent, raw: dict, files=None) -> bool:
     """安装确认：把名称、作者、尤其是权限列成人话。"""
     name = str(raw.get("name") or raw.get("id") or "未命名模组")
     version = str(raw.get("version") or "0.0.0")
@@ -75,6 +76,16 @@ def _confirm_install(parent, raw: dict) -> bool:
         lines += ["", "这些能力只在你启用这个模组后才用得上，停用即收回。"]
     else:
         lines.append("这个模组不申请任何权限。")
+
+    # 包里自带可执行程序（比如随包发一个 yt-dlp.exe）：安装前就把清单摆出来
+    exes = [str(n) for n in (files or []) if str(n).lower().endswith((".exe", ".dll", ".bat", ".cmd"))]
+    if exes:
+        lines += ["", f"这个包里还带了 {len(exes)} 个可执行文件："]
+        for n in exes[:6]:
+            lines.append(f"　· {n}")
+        if len(exes) > 6:
+            lines.append(f"　· …还有 {len(exes) - 6} 个")
+        lines.append("它们只在你启用模组、并且用到对应功能（比如下载 / 转码）时才会被运行，不放心就先取消。")
 
     box = QtWidgets.QMessageBox(parent)
     box.setWindowTitle("安装模组")
@@ -684,8 +695,8 @@ class ModPage(QtWidgets.QWidget):
     def install_file(self, pkg: Path) -> None:
         # 先把包里的 manifest 只读捞出来，让用户看清这包要什么权限再决定装不装。
         # 拖拽、选文件、拖放区三个入口都走这里，所以只加这一处就全覆盖了。
-        raw = _peek_manifest(pkg)
-        if raw is not None and not _confirm_install(self, raw):
+        raw, files = _peek_manifest(pkg)
+        if raw is not None and not _confirm_install(self, raw, files):
             self.main.toast("已取消安装", False)
             return
         good, msg = self.registry.install(pkg)

@@ -13,6 +13,7 @@
 ├── manifest.json       （必须，放最外层）
 ├── main.py             （必须，kind=package 时的入口）
 └── assets\             （可选，图标、图片、数据文件）
+    └── lib\            （可选，纯 Python 依赖，加载时自动进 sys.path）
 ```
 
 三条硬规则：
@@ -20,6 +21,10 @@
 1. **包里不要放 exe**（`kind=package` 时）。放 exe 的只有 `kind=external`，那是包装现成程序用的。
 2. **manifest 必须在包的最外层**。如果压成了 `我的模组/manifest.json`，安装器会自动往下找一层，但别依赖这个。
 3. **文件编码统一 UTF-8**（manifest 允许带 BOM）。
+
+**依赖自己带**：模组要用第三方纯 Python 库，就把整份塞进 `assets\lib\`（比如 `assets\lib\yt_dlp\`），宿主加载这个模组时会自动把 `assets\lib` 加进 `sys.path`，`main.py` 里直接 `import yt_dlp` 就行——不用自己改 `sys.path`，也不占安装包体积。卸载/退出时宿主自动摘掉，不会串到别的模组。
+
+要 exe 的依赖（ffmpeg、ffprobe 这类）不能进包：要么让它躺在宿主 `bundled\` 里由你指路径，要么首次使用时提示用户放到自己的 `host.paths.data_dir` 下，并在文档里写清放哪儿。
 
 ---
 
@@ -251,7 +256,35 @@ code, out, err = host.shell.capture([r"C:\xxx\ffmpeg.exe", "-version"], 10)
 
 ---
 
-## 6. 打包
+## 6. 自带依赖与第三方程序
+
+模组是「谁需要谁自己带」：宿主不给你装 yt-dlp，也不保证 PATH 里有 ffmpeg。你要用，就放进包里。
+
+### 三种放法
+
+| 东西 | 放哪 | 怎么用 |
+|---|---|---|
+| 纯 Python 包（yt-dlp、requests…） | `assets/lib/<包名>/` | 宿主在 `on_load` 之前就把 `assets/lib` 挂进 `sys.path`，直接 `import` 即可。目录名写 `pylibs` 也认（早先的模组都这么放的） |
+| 独立命令行程序（ffmpeg.exe、yt-dlp.exe…） | `assets/bin/` 或运行时下到 `host.paths.data_dir / "bin"` | `host.shell.capture([exe, "-version"], 15)` 取返回码和输出；长时间任务自己 `subprocess.Popen` 并留好 terminate 口 |
+| 图标、模板等静态文件 | `assets/` 直接放 | `host.paths.assets` 就是它 |
+
+`host.paths.assets` 指向 `<模组目录>\assets`（只读，别往里写东西）；要缓存就往 `host.paths.data_dir` 写。
+
+### 三条硬规矩
+
+1. **包内的 .exe / .dll / .bat 只能放在 `assets/` 下**，塞在包根会跟入口文件混在一起，也不允许。
+2. **带了可执行程序就必须申请 `shell` 权限**。没申请，`host.shell` 调不动；而且用户装之前看不到"这包会跑外部程序"这句提醒。
+3. 安装前宿主会把包里的可执行文件逐个列给用户看。单个程序超过 60 MB 会提示包变大，能裁就裁（ffmpeg 的 essentials 版就比 full 版小得多）。
+
+### 打包时要知道的
+
+- `tool/mod_test.py` 会检查上面两条（位置 + 权限），不合规直接判不合格。
+- `.sjmod` 是 zip，纯 Python 包别带 `__pycache__`、`.pyc`，体积能小一半。
+- 依赖只在**用到时**才 import（放函数里），别写顶层 —— 顶层 import 失败会让整个模组加载不起来，宿主只能看到一句 `ImportError`。
+
+---
+
+## 7. 打包
 
 用项目里的脚本，不用手搓 zip（手搓容易多套一层目录、漏改编码）：
 
@@ -272,7 +305,7 @@ cd C:\Users\1\Desktop\游戏助手
 
 ---
 
-## 7. 装上之后的行为
+## 8. 装上之后的行为
 
 1. 把 `.sjmod` 拖进模组页，或者点「安装模组文件」选文件
 2. 解压到 `文档\燧镜\mods\<id>\`
@@ -282,7 +315,7 @@ cd C:\Users\1\Desktop\游戏助手
 
 ---
 
-## 8. 调试常见错误
+## 9. 调试常见错误
 
 | 现象 | 原因 |
 |---|---|
@@ -295,7 +328,7 @@ cd C:\Users\1\Desktop\游戏助手
 
 ---
 
-## 9. 给 AI 助手写模组时的提示词模板
+## 10. 给 AI 助手写模组时的提示词模板
 
 > 我在写燧镜（Flint Mirror）的模组，框架 apiVersion 1。请严格按 `docs\MOD_API.md` 的规范产出：
 > 1. 先给 `manifest.json`（id 用 `com.<你的名字>.<功能>` 格式，permissions 只写真正用到的）

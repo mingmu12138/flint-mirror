@@ -590,6 +590,8 @@ class ModRuntime:
         )
         self._module: Any = None
         self._enabled = False
+        # kind=package 时，本模组的 assets 依赖目录是否被我们加进过 sys.path
+        self._lib_paths: list = []
         # 外部程序包装用
         self._proc: Optional[subprocess.Popen] = None
 
@@ -622,6 +624,19 @@ class ModRuntime:
         if self.spec.kind == KIND_EXTERNAL:
             self.status = STATUS_LOADED
             return True
+
+        # 包内纯 Python 依赖目录在导入入口之前就挂进 sys.path，
+        # 这样 main.py 顶层 import 就能直接用，模组不用自己往 sys.path 里塞东西。
+        # 目录名同时认 assets\lib（规范写法）和 assets\pylibs（早先的模组已经在用），
+        # 一直留到 unload 才摘：懒加载的模块（比如下载时才 import 的库）也要找得到。
+        for name in ("lib", "pylibs"):
+            lib_dir = self.spec.root / "assets" / name
+            if lib_dir.is_dir():
+                p = str(lib_dir)
+                if p not in sys.path:
+                    sys.path.insert(0, p)
+                    self._lib_paths.append(p)
+
         try:
             self._module = self._import_entry()
             fn = getattr(self._module, "on_load", None)
@@ -688,6 +703,12 @@ class ModRuntime:
         except Exception:
             log(f"[{self.spec.id}] 卸载钩子出错：\n{traceback.format_exc()}", logging.ERROR)
         self._module = None
+
+        # 把自己挂过的依赖路径摘掉，别给宿主留全局副作用
+        for p in list(self._lib_paths):
+            while p in sys.path:
+                sys.path.remove(p)
+        self._lib_paths = []
 
     # ---------- 外部程序 ----------
     def _launch_external(self) -> None:

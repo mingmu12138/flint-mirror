@@ -125,11 +125,30 @@ def main(argv) -> int:
             warns.append(f"包里带了编译缓存 {len(py_files)} 个，建议删掉再打")
 
         if spec.kind == KIND_PACKAGE:
-            exes = [n for n in names if n.lower().endswith((".exe", ".dll"))]
+            # 允许随包带第三方程序（比如 yt-dlp.exe），但有两条硬要求：
+            #   1. 只能放在 assets/ 下（包根目录塞 exe 会跟入口文件混在一起，容易装成裸程序）
+            #   2. manifest 必须申请 shell 权限 —— 宿主只让你用 host.shell 调它，用户装之前也得看见
+            exes = [n for n in names if n.lower().endswith((".exe", ".dll", ".bat", ".cmd"))]
             if exes:
-                problems.append(
-                    "kind=package 的包里不该有 exe/dll（" + "、".join(exes[:3]) + "）"
-                    "，要走外部程序请用 kind=external"
+                outside = [n for n in exes if not n.replace("\\", "/").lstrip("./").lower().startswith("assets/")]
+                if outside:
+                    problems.append(
+                        "包里的可执行文件必须放在 assets/ 下，这几个不在（"
+                        + "、".join(outside[:3]) + "）"
+                    )
+                if "shell" not in spec.permissions:
+                    problems.append(
+                        "自带可执行程序却没申请 shell 权限 —— 声明了用户才知道这个包会跑外部程序"
+                    )
+                with zipfile.ZipFile(pkg) as z:
+                    big = [(i.filename, i.file_size / 1024 / 1024) for i in z.infolist()
+                           if i.filename.lower().endswith((".exe", ".dll", ".bat", ".cmd"))]
+                for fn, mb in sorted(big, key=lambda x: -x[1])[:4]:
+                    if mb > 60:
+                        warns.append(f"{fn} 有 {mb:.0f} MB，整个包会跟着变大，尽量减少一点")
+                warns.append(
+                    f"包内自带 {len(exes)} 个可执行文件（用户安装时会看到这份清单）："
+                    + "、".join(Path(n).name for n in exes[:3])
                 )
 
         if size_mb > BIG_SIZE_MB:
