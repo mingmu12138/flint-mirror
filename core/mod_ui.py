@@ -457,8 +457,9 @@ class _DropZone(QtWidgets.QFrame):
         col.addWidget(t)
 
         hint = QtWidgets.QLabel(
-            "模组是 .sjmod 包，拖进来就能装。\n"
-            "和工具页那种「直接启动一个 exe」不一样，模组只能在这个软件里跑。"
+            "模组是打包好的 .sjmod 文件，拖这一个文件就能装。\n"
+            "别把模组文件夹（manifest.json / main.py / assets）整个拖进来，那不是安装物。\n"
+            "模组只能在这个软件里跑，和工具页那种「直接启动一个 exe」不一样。"
         )
         hint.setObjectName("Hint")
         hint.setAlignment(QtCore.Qt.AlignCenter)
@@ -562,6 +563,14 @@ class ModPage(QtWidgets.QWidget):
 
         head.addStretch(1)
 
+        help_btn = QtWidgets.QPushButton("?")
+        help_btn.setObjectName("Ghost")
+        help_btn.setFixedSize(30, 30)
+        help_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        help_btn.setToolTip("怎么装模组：拖的是哪个文件？点开看看")
+        help_btn.clicked.connect(self.show_install_help)
+        head.addWidget(help_btn)
+
         refresh = QtWidgets.QPushButton("刷新")
         refresh.setObjectName("Ghost")
         refresh.setToolTip("重新扫描模组目录")
@@ -593,10 +602,31 @@ class ModPage(QtWidgets.QWidget):
 
         foot = QtWidgets.QLabel(
             "把 .sjmod 文件拖进这个页面也能装。装坏的包会扔进 mods\\_invalid，不占地方。"
+            "分不清拖什么就点右上角「?」。"
         )
         foot.setObjectName("Hint")
         foot.setWordWrap(True)
         col.addWidget(foot)
+
+    # ---------- 装法说明 ----------
+    def show_install_help(self) -> None:
+        """那个小问号：把「拖哪个文件」讲清楚，免得把模组文件夹整个拖进来。"""
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("怎么装模组")
+        box.setIcon(QtWidgets.QMessageBox.Question)
+        box.setText("要拖的是 .sjmod 那个包，不是模组文件夹")
+        box.setInformativeText(
+            "你在「模组」页看到的 manifest.json / main.py / assets，是模组文件夹里的三样东西，"
+            "它们是打包的原料，不是安装物。把文件夹拖进来宿主不认，还会被当成坏包拒掉。\n\n"
+            "正确的做法只有一步：\n"
+            "1. 打开上一级目录 mods\\，找到 com.xxx.sjmod（2.8MB 上下的单个压缩包文件，"
+            "图标通常是压缩包样子）\n"
+            "2. 把这一个文件拖到燧镜「模组」页的空白处，或点「+ 安装模组文件」选中它\n"
+            "3. 弹出中文权限卡时逐项确认，要下载 / 转码的会多一项「启动外部程序」，然后点「安装」"
+        )
+        box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        box.button(QtWidgets.QMessageBox.Ok).setText("知道了")
+        box.exec()
 
     # ---------- 刷新 ----------
     def reload(self) -> None:

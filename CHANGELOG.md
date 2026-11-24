@@ -23,6 +23,7 @@
 - 扩展包可以自带依赖了：纯 Python 包放 `assets\lib\<包名>\`，模组在 `on_load` 里把它挂进 `sys.path` 后正常 `import`；命令行程序放 `assets\bin\`，用 `host.shell.capture(args, timeout)` 拿到返回码和输出。这些依赖仍然**不进安装包**，安装包体积不为某一个模组让步
 - 自带可执行程序的两条硬规矩（`tool\mod_test.py` 会查，不合规直接判不合格）：只能放在 `assets\` 下，并且 manifest 必须申请 `shell` 权限——没申请的话宿主调不动，用户安装前也看不到「这包会跑外部程序」
 - `docs\MOD_API.md` 新增第 6 节「自带依赖与第三方程序」：三种放法（`assets\lib`（`pylibs` 也认）/ `assets\bin` / 静态文件）、`host.paths.assets` 与 `data_dir` 的分工、单程序超 60 MB 会提示包太大、重依赖必须懒加载
+- 模组页右上角加了个「?」：点开就说清「拖的是哪个文件」——模组文件夹里的 manifest.json / main.py / assets 是打包原料，不是安装物，拖文件夹进来会被当坏包拒掉；要拖的是 `mods\` 里那个 `com.xxx.sjmod` 单文件。空状态提示也改成了同一种说法
 - 宿主现在会在导入 `main.py` 之前把模组的 `assets\lib`（或 `assets\pylibs`）挂进 `sys.path`，卸载时摘掉——模组不用自己往 `sys.path` 里塞东西，顶层 `import` 也能用
 
 ### 文档
