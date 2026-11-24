@@ -783,21 +783,27 @@ class ModRegistry:
             return False
         ok = rt.enable()
         self._write_state()
+        if ok:
+            EVENTS.emit("mod.enabled", id=mod_id)
         return ok
 
     def disable(self, mod_id: str) -> bool:
         rt = self.get(mod_id)
         if rt is None:
             return False
+        was = rt.running
         ok = rt.disable()
         self._write_state()
+        if ok and was:
+            EVENTS.emit("mod.disabled", id=mod_id)
         return ok
 
     def enable_all(self) -> None:
         state = self._read_state().get("enabled") or {}
         for rt in self.all():
             if state.get(rt.spec.id):
-                rt.enable()
+                if rt.enable():
+                    EVENTS.emit("mod.enabled", id=rt.spec.id)
         self._write_state()
 
     def shutdown(self) -> None:

@@ -231,6 +231,11 @@ class _Tile(QtWidgets.QFrame):
         m = QtWidgets.QMenu(self)
         m.addAction("启用" if not self.rt.running else "停用", self.toggle)
         m.addSeparator()
+        pages = self.page.pages_for(self.rt.spec.id) if hasattr(self.page, "pages_for") else []
+        for key, _builder in pages:
+            m.addAction(f"打开界面：{key}", lambda k=key: self.page.open_page(self.rt.spec.id, k))
+        if pages:
+            m.addSeparator()
         m.addAction("详情…", lambda: _mod_detail(self, self.rt))
         m.addAction("打开所在文件夹", lambda: _mod_open_dir(self, self.rt))
         if not self.rt.spec.builtin:
@@ -327,6 +332,11 @@ class _Card(QtWidgets.QFrame):
 
     def _menu(self) -> None:
         m = QtWidgets.QMenu(self)
+        pages = self.page.pages_for(self.rt.spec.id) if hasattr(self.page, "pages_for") else []
+        if pages:
+            for key, _builder in pages:
+                m.addAction(f"打开界面：{key}", lambda k=key: self.page.open_page(self.rt.spec.id, k))
+            m.addSeparator()
         m.addAction("详情…", self._detail)
         m.addAction("打开所在文件夹", self._open_dir)
         if not self.rt.spec.builtin:
@@ -424,11 +434,13 @@ class ModPage(QtWidgets.QWidget):
         self.view_mode = "grid" if mode == "grid" else "list"
 
         self.registry = ModRegistry(
-            ui_register=None,
-            hotkey_register=None,
+            ui_register=self._register_page,
+            hotkey_register=self._register_hotkey,
             notify=self._notify,
             app_version=app_version,
         )
+        # 模组自己注册的界面页：(模组 id, key) → builder
+        self._pages: dict = {}
 
         self._cards: list[_Card] = []
         self._tiles: list[_Tile] = []
@@ -646,3 +658,41 @@ class ModPage(QtWidgets.QWidget):
             self.main.toast(f"{title}：{text}", level != "error")
         except Exception:
             pass
+
+    # ---------- 模组注册的界面页 / 热键 ----------
+    def _register_page(self, spec, key: str, builder) -> None:
+        self._pages[(spec.id, key)] = builder
+
+    def pages_for(self, mod_id: str) -> list:
+        return [(k, b) for (mid, k), b in self._pages.items() if mid == mod_id]
+
+    def open_page(self, mod_id: str, key: str) -> None:
+        """把模组注册的控件塞进一个对话框显示（不占模组页布局）。"""
+        builder = self._pages.get((mod_id, key))
+        if builder is None:
+            return
+        try:
+            body = builder()
+        except Exception as exc:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(self, "模组页面出错", str(exc)[:300])
+            return
+        if not isinstance(body, QtWidgets.QWidget):
+            QtWidgets.QMessageBox.warning(self, "模组页面出错", "builder 没有返回 QWidget")
+            return
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(key)
+        dlg.resize(560, 420)
+        lay = QtWidgets.QVBoxLayout(dlg)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.addWidget(body, 1)
+        dlg.exec()
+
+    def _register_hotkey(self, spec, combo: str, fn) -> None:
+        hook = getattr(self.main, "register_mod_hotkey", None)
+        if hook is None:
+            return
+        if not hook(spec, combo, fn):
+            try:
+                self.main.toast(f"{spec.name} 的热键 {combo} 注册不上", False)
+            except Exception:
+                pass

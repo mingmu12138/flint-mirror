@@ -13,6 +13,8 @@ def on_load(host):
     global _HOST
     _HOST = host
     host.log.info(f"hello 加载完成，宿主版本 {host.app_version}")
+    # game.started 只有在「自动化」里配了这个进程的规则才会发；
+    # 想不依赖规则，就换成 host.schedule.every(3, 自己查进程)
     host.events.on("game.started", _on_game_started)
 
 

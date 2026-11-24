@@ -165,7 +165,16 @@ host.notify("标题", "正文", "info")     # level: info / warn / error
 host.ui.register_page("my_page", builder)
 ```
 
-`builder` 是个无参函数，返回一个 Qt 控件（`QWidget`）。宿主会把它塞进模组页的一个标签里。**不要自己造 QMainWindow**。
+`builder` 是个无参函数，返回一个 Qt 控件（`QWidget`）。**不要自己造 QMainWindow**。
+
+点开的位置：模组卡片/磁贴的「⋯」菜单里会多一项「打开界面：my_page」，点了就在一个 560×420 的对话框里显示 `builder()` 返回的控件。
+
+几条实话：
+
+- 每个 `key` 只显示成菜单里一项，**不会变成模组页上的一个标签页**
+- `builder()` 在点击时才调用，可以每次返回新控件；控件销毁交给 Qt
+- 同一个 `key` 重复注册会覆盖前一个 builder
+- 界面里要刷新自己，用 `QTimer` 或 `host.schedule.every()`，别在 `builder` 里起长循环
 
 ### 热键（权限 `hotkey`）
 
@@ -174,7 +183,11 @@ host.hotkey.register("Ctrl+Alt+K", my_fn)
 host.hotkey.unregister("Ctrl+Alt+K")
 ```
 
-冲突检测由宿主做，注册失败会写日志。
+写法同燧镜自己的热键：`Ctrl` / `Alt` / `Shift` / `Win` 组合 `+` 一个键名（A–Z、0–9、F1–F12、空格等）。
+
+- 冲突检测由宿主做：被别的程序占了就注册失败（会弹提示），**注意检查 host 端不会抛异常，只是没生效**
+- 热键管理器不支持单独注销，`unregister` 之后键位仍被本进程占着，只是模组停用后按了不触发
+- 回调在宿主主线程执行，别在里面干重活
 
 ### 事件（权限 `events`）
 
@@ -183,15 +196,19 @@ host.events.on("game.started", lambda **kw: ...)
 host.events.emit("my.thing", value=1)
 ```
 
-宿主会发的事件：
+宿主会发的事件（apiVersion 1 已实现）：
 
-| 事件名 | 时机 |
-|---|---|
-| `app.started` | 燧镜启动完成 |
-| `game.started` | 检测到游戏进程起来（参数 `process`） |
-| `game.stopped` | 游戏进程退出 |
-| `mod.enabled` | 某个模组被启用（参数 `id`） |
-| `mod.disabled` | 某个模组被停用 |
+| 事件名 | 时机 | 参数 |
+|---|---|---|
+| `app.started` | 界面起来后约 1.5 秒，所有模组 load 完之后广播一次 | 无 |
+| `game.started` | 「自动化」里配了进程的规则，那个进程启动时 | `process`（规则里写的进程名） |
+| `game.stopped` | 同上，那个进程退出时 | `process` |
+| `mod.enabled` | 某个模组被启用 | `id` |
+| `mod.disabled` | 某个模组被停用 | `id` |
+
+**game.\* 的前提**：模组自己看不到"所有游戏的启动"，宿主只在「自动化」里有进程规则的条件下监视进程（每 2 秒一次）。所以想要 `game.started`，用户得先在自动化里配一条以那个进程为触发条件的规则。没配就永远收不到——**别把核心功能挂在这个事件上**，用 `host.schedule.every()` 自己轮询更稳。
+
+模组之间也能用同一套事件互相通知，名字自己起（如 `my.thing`），互不干扰。
 
 ### 定时器（权限 `schedule`）
 
@@ -219,7 +236,7 @@ host.shell.launch(r"C:\xxx\tool.exe", ["--arg"])
 | `shell` | 启动外部程序 | `launch` 抛错 |
 | `events` | 收发事件 | `on/emit` 抛错 |
 | `schedule` | 定时任务 | `every` 抛错 |
-| `fs.data` | 读写 `data_dir`（默认就给，无需显式申请） | — |
+| `fs.data` | 声明"我要往 data_dir 写文件"。**没有对应的 host API**，拿到 `host.paths.data_dir` 后用普通 `open()` 写 | 不申请也能写，但审核时看不到你在用 |
 
 **原则：只申请你真用到的。** 安装时会把权限列在模组卡片上，用户看得见。
 

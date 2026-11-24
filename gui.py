@@ -120,6 +120,16 @@ log = logging.getLogger("gamehub")
 # ---------------------------------------------------------------------------
 # 工具
 # ---------------------------------------------------------------------------
+def _emit_mod_event(name: str, **kw) -> None:
+    """把宿主事件广播给模组（没装模组、没人订阅时是空操作）。"""
+    try:
+        from core.mod_api import EVENTS
+
+        EVENTS.emit(name, **kw)
+    except Exception:  # noqa: BLE001
+        log.debug("广播事件 %s 失败", name, exc_info=True)
+
+
 def is_headset(name: str) -> bool:
     low = (name or "").lower()
     return any(k in low for k in ("耳机", "headset", "headphone", "earbud", "airpods"))
@@ -1630,6 +1640,9 @@ CHANGELOG = [
             "不会一直扫盘：只在「这份配置还没扫过」时扫一次，后台线程跑完就结束，不常驻不轮询；"
             "同一个名字 24 小时内不重复扫",
             "新增：工具页顶部「刷新」按钮，手动再扫一遍（只留这一个重扫入口，「⋯」里不再重复放一条）",
+            "修：模组接口补上真实现 —— 宿主事件（app.started / game.started / game.stopped / "
+            "mod.enabled / mod.disabled）以前只写在文档里没发过，现在真发了；"
+            "模组注册的界面页以前被宿主忽略，现在能在模组卡片「⋯」里打开；模组热键也真能注册上了",
             "修：这一页之前断了三个版本没写（v1.10.0 ~ v1.10.2），点开还停在 11-23 的 v1.9.7，现在一起补回来",
         ],
     ),
@@ -11326,6 +11339,8 @@ class MainWindow(QtWidgets.QWidget):
         _install_style_hook()
         self.guard = guard
         self.hotkeys = hotkeys
+        # 模组注册的全局热键：{(模组 id, 组合键): (vk, modifiers)}
+        self._mod_hotkeys = {}
         # 上次选的作用屏：换回主屏就传 None（模块级状态，所有切档调用自动跟随）
         try:
             display.set_target(getattr(cfg, "screen_device", "") or None)
@@ -11439,6 +11454,9 @@ class MainWindow(QtWidgets.QWidget):
         self.rule_timer = QTimer(self)
         self.rule_timer.timeout.connect(self._watch_rules)
         self.rule_timer.start(2000)
+
+        # 模组事件：界面起完之后广播一次 app.started（那时模组都已 load 完、订阅上了）
+        QTimer.singleShot(1500, lambda: _emit_mod_event("app.started"))
 
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
@@ -14935,8 +14953,10 @@ class MainWindow(QtWidgets.QWidget):
                 # 第一次只记基线，避免程序刚启动就把已在跑的游戏当成"刚启动"
                 continue
             if rule.trigger == TRIGGER_START and now and not prev:
+                _emit_mod_event("game.started", process=rule.process)
                 self.run_rule(rule, f"{rule.process} 启动")
             elif rule.trigger == TRIGGER_STOP and prev and not now:
+                _emit_mod_event("game.stopped", process=rule.process)
                 self.run_rule(rule, f"{rule.process} 退出")
 
     # ------------------------------------------------------------------
@@ -15523,6 +15543,40 @@ class MainWindow(QtWidgets.QWidget):
         log.warning("热键 %s（%s）注册失败，没有可用备选", want, label)
         notes.append(f"{label} 的 {want} 注册不上，换个键试试")
         return ""
+
+    def register_mod_hotkey(self, spec, combo: str, fn) -> bool:
+        """模组申请一个全局热键。写法不对或被占用返回 False。
+
+        热键管理器没有单独注销，所以回调包一层：模组停用后按了也不动。
+        """
+        parsed = parse_hotkey(str(combo))
+        if not parsed:
+            log.warning("模组 %s 的热键写法不对：%r", spec.id, combo)
+            return False
+        vk, modifiers = parsed
+
+        def guarded() -> None:
+            rt = None
+            try:
+                rt = self.mod_view.registry.get(spec.id) if self.mod_view else None
+            except Exception:  # noqa: BLE001
+                rt = None
+            if rt is not None and not rt.running:
+                return
+            try:
+                fn()
+            except Exception:  # noqa: BLE001
+                log.error("模组 %s 的热键回调出错", spec.id, exc_info=True)
+
+        if not self.hotkeys.register(vk, modifiers, guarded):
+            log.warning("模组 %s 的热键 %s 被别的程序占用了", spec.id, combo)
+            return False
+        self._mod_hotkeys[(spec.id, str(combo))] = (vk, modifiers)
+        log.info("模组 %s 注册热键 %s", spec.id, combo)
+        return True
+
+    def unregister_mod_hotkey(self, spec, combo: str) -> None:
+        self._mod_hotkeys.pop((spec.id, str(combo)), None)
 
     def register_hotkeys(self) -> None:
         if self._hotkeys_registered:
