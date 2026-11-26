@@ -89,18 +89,34 @@ class Ny:
     def _boot(self) -> None:
         try:
             with self.lock:
+                restored = False
                 try:
                     if self.sess_file.exists():
-                        pyncm.LoadSessionFromString(self.sess_file.read_text("utf-8"))
+                        # pyncm 的 LoadSessionFromString 只「解析」出一份会话，并不会
+                        # 接管当前会话；漏掉下面这句，恢复等于没做，接着的匿名登录
+                        # 还会把真实登录态覆盖掉 —— 这就是每次启动都要重新扫码的原因
+                        sess = pyncm.LoadSessionFromString(
+                            self.sess_file.read_text("utf-8"))
+                        pyncm.SetCurrentSession(sess)
+                        restored = True
                 except Exception as exc:  # noqa: BLE001
                     self.error = "恢复登录态失败：%s" % exc
                 st = self._status()
                 if not st.get("logged"):
+                    if restored:
+                        # 恢复出来的登录态已经失效（MUSIC_U 过期），清掉，别再拖累下次
+                        try:
+                            self.sess_file.unlink()
+                        except Exception:  # noqa: BLE001
+                            pass
                     try:
                         LoginViaAnonymousAccount()
                         self._status()
                     except Exception as exc:  # noqa: BLE001
                         self.error = "匿名登录失败：%s" % exc
+                else:
+                    # 认到了：顺手把这次请求刷新过的 cookie 写回去
+                    self.save()
         except Exception as exc:  # noqa: BLE001
             self.error = str(exc)
         finally:

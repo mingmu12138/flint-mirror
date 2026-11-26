@@ -31,7 +31,7 @@ from core import (ace, artwork, audioout, automation, cacheclean, crosshair, cap
                     daily_hud, df_intel, display, fps,
                     clipboard_lan, fps_hud, ipc, netspeed, power, recorder, replay, scaling, spec,
                     startup, steamaccount, steamlib, steamnames, store, sysmon, theme,
-                    traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool)
+                    traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool, stats)
 from core import player as mplayer
 from core.hotkey import (
     MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK, HotkeyManager,
@@ -1664,6 +1664,11 @@ CHANGELOG = [
             "是打包原料，不是安装物，拖文件夹会被当坏包拒掉；要拖的是 mods 里那个 com.xxx.sjmod 单文件",
             "使用说明里补了同样的装法一段（含权限卡里「启动外部程序」这一项的说明）",
             "修：这一页之前断了三个版本没写（v1.10.0 ~ v1.10.2），点开还停在 11-23 的 v1.9.7，现在一起补回来",
+            "修：网易云以前每次重启都要重新扫码 —— pyncm 的 LoadSessionFromString 只把登录态解析成一份会话，"
+            "不会接管当前会话，漏了那一步等于没恢复，紧接着的匿名登录还会把真实登录态覆盖掉；"
+            "现在恢复完显式设回当前会话，认到账号就直接用，只有登录态真过期了才清掉重新扫码",
+            "新增：启动时静默发一次匿名计数（只带一个日期，不含设备与个人信息），作者自己看有多少人真在用；"
+            "界面不显示、断网静默跳过，不影响启动",
         ],
     ),
     (
@@ -15463,6 +15468,13 @@ class MainWindow(QtWidgets.QWidget):
     def showEvent(self, event: QtGui.QShowEvent) -> None:
         super().showEvent(event)
         set_dark_title_bar(self)
+        if not getattr(self, "_stat_reported", False):
+            self._stat_reported = True
+            # 设备级日活计数：后台线程、失败静默，界面上什么都不显示
+            try:
+                stats.report_async(app_dir(), APP_VERSION)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("启动计数跳过：%s", exc)
         if not getattr(self, "_autostart_checked", False):
             self._autostart_checked = True
             try:
