@@ -102,7 +102,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.10.3"
+APP_VERSION = "v1.11.0"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -1634,6 +1634,17 @@ class AddRemoteDialog(QtWidgets.QDialog):
 # 关于
 # ---------------------------------------------------------------------------
 CHANGELOG = [
+    (
+        "2026-11-26 · v1.11.0",
+        [
+            "新增：设置 →「显示」页多了「顶部页面」一组勾选 —— 内置工具、工具、模组、音乐、Steam、喜加一各自一个勾，"
+            "去掉勾顶部那个整页页签就直接消失，不用重启，随时勾回来",
+            "主页固定显示（勾是灰的、点不动）：软件总得有个落点，不然把别的页关完，启动就无处可去",
+            "只藏入口，不删东西：被藏掉的页对象、数据、设置全留着，主页上的音乐小胶囊照样能用，重新勾上立刻回来",
+            "关掉的正好是自己正停着的那一页时，自动退回主页，不会把人留在没有入口的页上",
+            "关掉的选择记进 config.json，下次启动照样生效；想恢复就进设置把勾打回来",
+        ],
+    ),
     (
         "2026-11-24 · v1.10.3",
         [
@@ -4606,6 +4617,20 @@ class SettingsDialog(QtWidgets.QDialog):
                 tray.hide()
         self.win.toast("小喇叭图标" + ("已放回任务栏（重开程序后固定）" if on else "已收起，用主托盘菜单切音频"))
 
+    def _on_page_visible(self, attr: str, visible: bool) -> None:
+        """设置里勾掉某个顶部页签：写进配置并立刻生效，不用重启。"""
+        hidden = [x for x in (getattr(self.cfg, "pages_hidden", None) or []) if x != attr]
+        if not visible:
+            hidden.append(attr)
+        self.cfg.pages_hidden = hidden
+        self.cfg.save()
+        try:
+            self.win.apply_page_visibility()
+        except Exception:  # noqa: BLE001
+            pass
+        label = dict(getattr(self.win, "PAGE_TABS", ())).get(attr, attr)
+        self.win.toast(f"「{label}」已隐藏，顶部不再显示这一页" if not visible else f"「{label}」已恢复显示")
+
     def _test_audio(self) -> None:
         self.win.toggle_audio_output()
         self.audio_now.setText(
@@ -5076,6 +5101,33 @@ class SettingsDialog(QtWidgets.QDialog):
         tip_display.setObjectName("Small")
         tip_display.setWordWrap(True)
         lay.addWidget(tip_display)
+
+        # ---------- 顶部页面 ----------
+        lay.addWidget(self._group("顶部页面（去掉勾的页签不再显示，数据与设置都还在）"))
+        grid_tabs = QtWidgets.QVBoxLayout()
+        grid_tabs.setSpacing(2)
+        self._page_checks = {}
+        tabs_list = list(getattr(self.win, "PAGE_TABS", ()))
+        row_line = None
+        for idx, (attr, label) in enumerate(tabs_list):
+            if idx % 4 == 0:
+                row_line = QtWidgets.QHBoxLayout()
+                row_line.setSpacing(24)
+                grid_tabs.addLayout(row_line)
+            chk = QtWidgets.QCheckBox(label + "（固定）" if attr == "home_scroll" else label)
+            if attr == "home_scroll":
+                chk.setChecked(True)
+                chk.setEnabled(False)
+                chk.setToolTip("主页固定显示：关掉之后启动没有落点")
+            else:
+                chk.setChecked(attr not in (getattr(self.cfg, "pages_hidden", None) or []))
+                chk.setToolTip("去掉勾：顶部这个页签直接消失，随时可以勾回来")
+                chk.toggled.connect(lambda v, a=attr: self._on_page_visible(a, v))
+            self._page_checks[attr] = chk
+            row_line.addWidget(chk)
+            if idx % 4 == 3 or idx == len(tabs_list) - 1:
+                row_line.addStretch(1)
+        lay.addLayout(grid_tabs)
 
         # ---------- 显示 ----------
         lay.addWidget(self._group("显示"))
@@ -11617,15 +11669,7 @@ class MainWindow(QtWidgets.QWidget):
         nav_row = QtWidgets.QHBoxLayout()
         nav_row.setSpacing(6)
         self._tab_btns = {}
-        for attr, text in (
-            ("home_scroll", "主页"),
-            ("tools_page", "内置工具"),
-            ("mods_page", "工具"),
-            ("mod_page", "模组"),
-            ("music_page", "音乐"),
-            ("steam_page", "Steam"),
-            ("epic_page", "喜加一"),
-        ):
+        for attr, text in self.PAGE_TABS:
             b = QtWidgets.QPushButton(text)
             b.setObjectName("Seg")
             b.setCheckable(True)
@@ -11635,6 +11679,8 @@ class MainWindow(QtWidgets.QWidget):
             b.clicked.connect(lambda _=False, a=attr: self._goto(a))
             nav_row.addWidget(b)
             self._tab_btns[attr] = b
+        # 按配置把关掉的页签藏起来（主页永远留着，否则启动没落点）
+        self.apply_page_visibility()
         nav_row.addStretch(1)
 
         gm_btn = QtWidgets.QPushButton("游戏模式")
@@ -14819,6 +14865,39 @@ class MainWindow(QtWidgets.QWidget):
         page = getattr(self, attr, None)
         if page is not None:
             self.stack.setCurrentWidget(page)
+
+    # 顶部页签：能藏的就这几个（主页固定显示，不然启动没落点）
+    PAGE_TABS = (
+        ("home_scroll", "主页"),
+        ("tools_page", "内置工具"),
+        ("mods_page", "工具"),
+        ("mod_page", "模组"),
+        ("music_page", "音乐"),
+        ("steam_page", "Steam"),
+        ("epic_page", "喜加一"),
+    )
+
+    def apply_page_visibility(self) -> None:
+        """按 cfg.pages_hidden 显示 / 隐藏顶部页签；藏掉的页面本身不销毁。
+
+        只动页签按钮：页面对象、数据、设置都还在，重新勾上立刻回来。
+        如果当前正停在被藏的那一页，先切回主页，别让人卡在没有入口的页上。
+        """
+        hidden = {x for x in (getattr(self.cfg, "pages_hidden", None) or []) if isinstance(x, str)}
+        hidden.discard("home_scroll")
+        for attr, btn in getattr(self, "_tab_btns", {}).items():
+            if attr == "home_scroll":
+                btn.setVisible(True)
+                continue
+            btn.setVisible(attr not in hidden)
+        if hidden:
+            cur = self.stack.currentWidget()
+            for attr in hidden:
+                page = getattr(self, attr, None)
+                if page is not None and cur is page:
+                    self._goto("home_scroll")
+                    break
+        self._sync_tabs()
 
     def _on_stack_page(self, *_) -> None:
         """切页后强制整窗重画一遍。

@@ -657,6 +657,8 @@ class Config:
         self.bar_side: str = ""
         # 新手引导是否已经看过（第一次启动自动弹一次）
         self.guide_shown: bool = False
+        # 顶部页签里被隐藏的页面（存内部 attr 名，如 music_page）；主页固定不能藏
+        self.pages_hidden: List[str] = []
         self.load()
 
     # ---------- 读写 ----------
@@ -786,6 +788,11 @@ class Config:
         self.cross_dot = bool(raw.get("cross_dot", True))
         self.cross_outline = bool(raw.get("cross_outline", True))
         self.theme = str(raw.get("theme") or "cyber").strip() or "cyber"
+        raw_hidden = raw.get("pages_hidden")
+        if isinstance(raw_hidden, list):
+            self.pages_hidden = [str(x) for x in raw_hidden if isinstance(x, str) and x]
+        else:
+            self.pages_hidden = []
         mode = str(raw.get("window_mode") or "classic").strip().lower()
         self.window_mode = mode if mode in ("classic", "glass", "liquid") else "classic"
         self.art_show = bool(raw.get("art_show", False))
@@ -1025,6 +1032,7 @@ class Config:
             "art_blur": self.art_blur,
             "machine_tag": self.machine_tag,
             "guide_shown": self.guide_shown,
+            "pages_hidden": list(self.pages_hidden or []),
             "bar_on": self.bar_on,
             "bar_pos": list(self.bar_pos or []),
             "bar_side": self.bar_side,
