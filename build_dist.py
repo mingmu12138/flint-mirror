@@ -80,8 +80,16 @@ def _builtin_mods() -> list:
 
 # 使用说明：正文放在 使用说明模板.txt 里，改文案不用动这个脚本，
 # 也不用操心反斜杠和花括号转义
+APK_LIST = sorted(ROOT.glob("燧镜手机版_v*.apk"))
+# 手机版版本号：从随包的 APK 文件名里取，免得说明写死旧版本
+APP_VER = APK_LIST[-1].stem.split("_v")[-1] if APK_LIST else "未知"
+
 README_TEXT = (ROOT / "使用说明模板.txt").read_text(encoding="utf-8")
-README_TEXT = README_TEXT.replace("{VERSION}", VERSION).replace("{AUTHOR}", AUTHOR)
+README_TEXT = (
+    README_TEXT.replace("{VERSION}", VERSION)
+    .replace("{AUTHOR}", AUTHOR)
+    .replace("{APP_VER}", APP_VER)
+)
 
 RESTORE_BAT = """@echo off
 cd /d "%~dp0"
