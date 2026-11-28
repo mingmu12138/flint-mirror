@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.7"
+APP_VERSION = "v1.12.8"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -1635,6 +1635,15 @@ class AddRemoteDialog(QtWidgets.QDialog):
 # 关于
 # ---------------------------------------------------------------------------
 CHANGELOG = [
+    (
+        "2026-11-28 · v1.12.8",
+        [
+            "改：原来叫「皮肤」的那套东西，界面上统一改成「主题」 —— 它本来管的就是颜色和圆角，"
+            "换的叫主题而不是贴图。「导入皮肤文件…」「打开皮肤文件夹」也跟着改成主题，"
+            "配置文件里的键名没动，之前存的那套照样认",
+            "新：内置主题多了一套「白蓝」 —— 深底配白光蓝，冷色科技感，夹在赛博青和暗金之间",
+        ],
+    ),
     (
         "2026-11-28 · v1.12.7",
         [
@@ -4282,7 +4291,7 @@ def _import_skin_file(parent, win) -> bool:
     import shutil as _sh
 
     path, _ = QtWidgets.QFileDialog.getOpenFileName(
-        parent, "导入皮肤", str(Path.home()), "JSON (*.json)"
+        parent, "导入主题", str(Path.home()), "JSON (*.json)"
     )
     if not path:
         return False
@@ -4292,7 +4301,7 @@ def _import_skin_file(parent, win) -> bool:
         _sh.copy2(path, folder / Path(path).name)
         theme.scan(force=True)
         apply_theme()
-        win.toast("皮肤已导入：" + Path(path).stem)
+        win.toast("主题已导入：" + Path(path).stem)
         return True
     except Exception as exc:  # noqa: BLE001
         win.toast("导入失败：" + str(exc), False)
@@ -4454,7 +4463,7 @@ class SkinPanel(QtWidgets.QDialog):
         v.setSpacing(9)
 
         # 皮肤
-        title = QtWidgets.QLabel("皮肤")
+        title = QtWidgets.QLabel("主题")
         title.setObjectName("Section")
         v.addWidget(title)
         tip = QtWidgets.QLabel("只换颜色，不动布局。点一下就生效，不用重启。")
@@ -4530,10 +4539,10 @@ class SkinPanel(QtWidgets.QDialog):
 
         bar = QtWidgets.QHBoxLayout()
         bar.setSpacing(8)
-        imp = QtWidgets.QPushButton("导入皮肤文件…")
+        imp = QtWidgets.QPushButton("导入主题文件…")
         imp.setObjectName("Ghost")
         imp.clicked.connect(lambda: _import_skin_file(self, self.win) and self._sync())
-        folder = QtWidgets.QPushButton("打开皮肤文件夹")
+        folder = QtWidgets.QPushButton("打开主题文件夹")
         folder.setObjectName("Ghost")
         folder.clicked.connect(lambda: _open_skin_folder(self.win))
         done = QtWidgets.QPushButton("完成")
@@ -5130,7 +5139,7 @@ class SettingsDialog(QtWidgets.QDialog):
         tip_win.setWordWrap(True)
         lay.addWidget(tip_win)
 
-        lay.addWidget(self._group("皮肤"))
+        lay.addWidget(self._group("主题"))
         tip_skin = QtWidgets.QLabel("只换颜色，不动布局；点哪套就用哪套，立刻生效，不用重启。")
         tip_skin.setObjectName("Small")
         tip_skin.setWordWrap(True)
@@ -5142,10 +5151,10 @@ class SettingsDialog(QtWidgets.QDialog):
 
         row_skin = QtWidgets.QHBoxLayout()
         row_skin.setSpacing(8)
-        bt_skin_imp = QtWidgets.QPushButton("导入皮肤文件…")
+        bt_skin_imp = QtWidgets.QPushButton("导入主题文件…")
         bt_skin_imp.setObjectName("Ghost")
         bt_skin_imp.clicked.connect(self._skin_import)
-        bt_skin_dir = QtWidgets.QPushButton("打开皮肤文件夹")
+        bt_skin_dir = QtWidgets.QPushButton("打开主题文件夹")
         bt_skin_dir.setObjectName("Ghost")
         bt_skin_dir.clicked.connect(self._skin_folder)
         row_skin.addWidget(bt_skin_imp)
@@ -5154,7 +5163,7 @@ class SettingsDialog(QtWidgets.QDialog):
         lay.addLayout(row_skin)
 
         note_skin = QtWidgets.QLabel(
-            "想自己做一套：打开皮肤文件夹，照着「自定义示例.json」改颜色，存成任意名字再进来导入。"
+            "想自己做一套：打开主题文件夹，照着「自定义示例.json」改颜色，存成任意名字再进来导入。"
         )
         note_skin.setObjectName("Hint")
         note_skin.setWordWrap(True)
@@ -12828,7 +12837,7 @@ class MainWindow(QtWidgets.QWidget):
         self.skin_btn.setFixedSize(30, 30)
         self.skin_btn.setIcon(_skin_icon())
         self.skin_btn.setIconSize(QtCore.QSize(19, 19))
-        self.skin_btn.setToolTip("外观：皮肤 / 窗口外观 / 背景模糊")
+        self.skin_btn.setToolTip("外观：主题 / 窗口外观 / 背景模糊")
         self.skin_btn.clicked.connect(self.open_skin_panel)
         head.addWidget(self.skin_btn)
 
@@ -15559,7 +15568,7 @@ class MainWindow(QtWidgets.QWidget):
             pass
         apply_theme()
         try:
-            self.toast(f"皮肤：{t.name}")
+            self.toast(f"主题：{t.name}")
         except Exception:  # noqa: BLE001
             pass
 
@@ -15570,7 +15579,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def refresh_skin_btn(self) -> None:
         try:
-            self.skin_btn.setToolTip(f"外观　当前皮肤：{theme.current().name}　点击打开")
+            self.skin_btn.setToolTip(f"外观　当前主题：{theme.current().name}　点击打开")
         except Exception:  # noqa: BLE001
             pass
 
