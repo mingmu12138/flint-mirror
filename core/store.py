@@ -40,6 +40,8 @@ BUILTIN_PAGES = [
     ("三角洲情报", "delta", "密码门 · 子弹 · 假账榜 · 制造利润"),
     # 显示器滤镜：直接调显示器 Gamma 曲线，预设 + 对比预览，关窗自动还原
     ("显示器滤镜", "filter", "预设 + 对比预览 · 关窗自动还原"),
+    # MC 指令台：快捷指令 / NBT 生成 / 区域填充，只拼文本 + 模拟键鼠输入
+    ("MC 指令台", "mc", "快捷指令 · NBT 生成 · 区域填充 · 键鼠模拟"),
 ]
 
 CONFIG_NAME = "config.json"
@@ -71,7 +73,7 @@ _GAME_WORDS = ("steam", "epic", "pcl", "启动器", "我的世界", "minecraft",
 def guess_group(name: str = "", kind: str = "", path: str = "") -> str:
     """给没设置过分组的模组猜一个：内置页面看 key，其余看名字/路径。"""
     if kind == KIND_PAGE:
-        return GROUP_GAME if (path or "").lower() == "delta" else GROUP_UTIL
+        return GROUP_GAME if (path or "").lower() in ("delta", "mc") else GROUP_UTIL
     text = f"{name or ''} {path or ''}".lower()
     for word in _GAME_WORDS:
         if word in text:

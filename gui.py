@@ -31,7 +31,8 @@ from core import (ace, artwork, audioout, automation, cacheclean, crosshair, cap
                     daily_hud, df_intel, display, fps,
                     clipboard_lan, fps_hud, ipc, netspeed, power, recorder, replay, scaling, spec,
                     startup, steamaccount, steamlib, steamnames, storage, store, sysmon, theme,
-                    traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool, stats)
+                    traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool, stats,
+                    mcwin)
 from core import player as mplayer
 from core.hotkey import (
     MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK, HotkeyManager,
@@ -102,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.0"
+APP_VERSION = "v1.12.1"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -15455,6 +15456,8 @@ class MainWindow(QtWidgets.QWidget):
             self.show_delta()
         elif key == "filter":
             self.open_filter()
+        elif key == "mc":
+            self.open_mc()
         else:
             self.toast(f"内置页面「{key}」还没接上", False)
 
@@ -15466,6 +15469,15 @@ class MainWindow(QtWidgets.QWidget):
             win = self.filter_win
         win.show_window()
         self.toast("滤镜窗已打开：左边原图、右边是这套参数的效果")
+
+    def open_mc(self) -> None:
+        """MC 指令台：独立窗口，四个页签，关掉只是隐藏。"""
+        win = getattr(self, "mc_win", None)
+        if win is None:
+            self.mc_win = mcwin.MCWindow(self.cfg)
+            win = self.mc_win
+        win.show_window()
+        self.toast("MC 指令台已打开：只拼文本 + 模拟键鼠，不碰游戏内存")
 
     def _do_launch(self, mod: Mod) -> None:
         mod._retried = False
