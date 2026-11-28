@@ -89,6 +89,8 @@ def _declare_prototypes() -> None:  # noqa: D401
     u.AttachThreadInput.restype = wintypes.BOOL
     u.SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
     u.SendInput.restype = wintypes.UINT
+    u.GetAsyncKeyState.argtypes = [ctypes.c_int]
+    u.GetAsyncKeyState.restype = ctypes.c_short
     k.GetCurrentThreadId.restype = wintypes.DWORD
     k.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     k.OpenProcess.restype = wintypes.HANDLE
@@ -369,6 +371,38 @@ def paste_text(text: str, restore: bool = True) -> bool:
 
 def press_enter() -> bool:
     return _send([_vk(VK_RETURN), _vk(VK_RETURN, up=True)])
+
+
+# ---------------------------------------------------------------- 鼠标 / 单键（给宏用）
+INPUT_MOUSE = 0
+
+_MOUSE_FLAG = {
+    ("left", True): 0x0002,
+    ("left", False): 0x0004,
+    ("right", True): 0x0008,
+    ("right", False): 0x0010,
+    ("middle", True): 0x0020,
+    ("middle", False): 0x0040,
+}
+
+
+def key_event(vk: int, down: bool) -> bool:
+    """按下一个键 / 松开一个键（宏回放用）。"""
+    return _send([_vk(int(vk), up=not down)])
+
+
+def mouse_event(btn: str, down: bool) -> bool:
+    """在当前鼠标位置敲一下左/右/中键（宏回放用，不移动光标）。"""
+    flag = _MOUSE_FLAG.get((str(btn), bool(down)))
+    if not flag:
+        return False
+    mi = MOUSEINPUT(0, 0, 0, flag, 0, 0)
+    return _send([INPUT(type=INPUT_MOUSE, u=_INPUTUNION(mi=mi))])
+
+
+def is_key_down(vk: int) -> bool:
+    """轮询用：这个键现在是否按着（带回 0x8000 位就是按着）。"""
+    return bool(user32.GetAsyncKeyState(int(vk)) & 0x8000)
 
 
 def send_command(cmd: str, method: str = "paste", enter: bool = True,

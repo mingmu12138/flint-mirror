@@ -223,10 +223,27 @@ def connect_wifi(ip: str) -> tuple[bool, str]:
     return False, (text or "").strip()[:80] or "无线连接失败"
 
 
-def start(serial: str = "", quality: str = "normal") -> QtCore.QProcess:
-    """拉起 scrcpy 窗口。返回 QProcess，调用方自己接 finished 信号。"""
+def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str = "",
+          virtual: bool = False, no_audio: bool = False) -> QtCore.QProcess:
+    """拉起 scrcpy 窗口。返回 QProcess，调用方自己接 finished 信号。
+
+    可选的高级档（scrcpy 5.x 原生支持，不是我们造的功能）：
+      fps       —— 帧率上限，0 = 不限制
+      record    —— 录屏到 mp4（scrcpy 边投边录，关窗口就收尾成文件）
+      virtual   —— 开一块"虚拟屏"，应用跑在里面，不动手机前台
+      no_audio  —— 不把手机声音转到电脑（用手机音频接收那套时勾它，免得两边抢）
+    拖拽互传是 scrcpy 自带的：把文件拖进投屏窗口，它就推到手机 Download 里。
+    """
     args = ["--turn-screen-off", "--stay-awake", "--window-title=燧镜投屏",
             "--keyboard=uhid", "--mouse=sdk"]
+    if fps:
+        args.append("--max-fps=%d" % int(fps))
+    if virtual:
+        args.append("--new-display")
+    if no_audio:
+        args.append("--no-audio")
+    if record:
+        args.append("--record=" + str(record))
     q = QUALITY.get(quality)
     if q:
         args += q[1]

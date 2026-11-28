@@ -32,7 +32,7 @@ from core import (ace, artwork, audioout, automation, cacheclean, crosshair, cap
                     clipboard_lan, fps_hud, ipc, netspeed, power, recorder, replay, scaling, spec,
                     startup, steamaccount, steamlib, steamnames, storage, store, sysmon, theme,
                     traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool, stats,
-                    mcwin)
+                    mcwin, macro)
 from core import player as mplayer
 from core.hotkey import (
     MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK, HotkeyManager,
@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.1"
+APP_VERSION = "v1.12.2"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -6160,11 +6160,14 @@ class ScrcpyDialog(QtWidgets.QDialog):
         gv.addWidget(steps)
         lay.addWidget(self.guide)
 
-        # ---- 画质 ----
+        # ---- 画质 / 帧率 / 附加档 ----
         q_card = QtWidgets.QFrame()
         q_card.setObjectName("Card")
-        qh = QtWidgets.QHBoxLayout(q_card)
-        qh.setContentsMargins(14, 9, 14, 9)
+        qv = QtWidgets.QVBoxLayout(q_card)
+        qv.setContentsMargins(14, 9, 14, 9)
+        qv.setSpacing(6)
+
+        qh = QtWidgets.QHBoxLayout()
         qh.setSpacing(8)
         ql = QtWidgets.QLabel("画质")
         ql.setObjectName("Small")
@@ -6176,10 +6179,39 @@ class ScrcpyDialog(QtWidgets.QDialog):
             self.quality_combo.addItem(label, key)
         self.quality_combo.setCurrentIndex(1)
         qh.addWidget(self.quality_combo)
+
+        fps_lab = QtWidgets.QLabel("帧率上限")
+        fps_lab.setObjectName("Small")
+        qh.addWidget(fps_lab)
+        self.fps_combo = QtWidgets.QComboBox()
+        self.fps_combo.setObjectName("Mini")
+        self.fps_combo.setFixedWidth(92)
+        for label, val in (("不限", 0), ("30", 30), ("60", 60), ("144", 144)):
+            self.fps_combo.addItem(label, val)
+        qh.addWidget(self.fps_combo)
+
         qh.addStretch(1)
         hint = QtWidgets.QLabel("手机屏幕会物理熄灭，电脑上照常看")
         hint.setObjectName("Hint")
         qh.addWidget(hint)
+        qv.addLayout(qh)
+
+        qrow = QtWidgets.QHBoxLayout()
+        qrow.setSpacing(12)
+        self.chk_record = QtWidgets.QCheckBox("录屏到素材")
+        self.chk_record.setToolTip("scrcpy 边投边录，关掉投屏窗口就把 mp4 收尾，放在「素材·录屏」里")
+        qrow.addWidget(self.chk_record)
+        self.chk_virtual = QtWidgets.QCheckBox("虚拟屏")
+        self.chk_virtual.setToolTip("单开一块虚拟屏跑 App，不动手机前台；老系统可能不支持，报错就直接不勾")
+        qrow.addWidget(self.chk_virtual)
+        self.chk_mute = QtWidgets.QCheckBox("不转手机声音")
+        self.chk_mute.setToolTip("手机声音不往电脑送（在用「手机音频接收」那套时可以勾，免得两边抢）")
+        qrow.addWidget(self.chk_mute)
+        qrow.addStretch(1)
+        drag_hint = QtWidgets.QLabel("拖文件进投屏窗口 = 直接推到手机 Download")
+        drag_hint.setObjectName("Hint")
+        qrow.addWidget(drag_hint)
+        qv.addLayout(qrow)
         lay.addWidget(q_card)
 
         # ---- 无线（默认折起） ----
@@ -6325,9 +6357,15 @@ class ScrcpyDialog(QtWidgets.QDialog):
         serial = snap["serials"][0] if snap["serials"] else ""
         self.start_btn.setEnabled(False)
         self.start_btn.setText("正在拉起…")
+        opts = {
+            "fps": int(self.fps_combo.currentData() or 0),
+            "record": self.chk_record.isChecked(),
+            "virtual": self.chk_virtual.isChecked(),
+            "no_audio": self.chk_mute.isChecked(),
+        }
         try:
             # 进程挂主窗口，面板关掉也不跟着死；这里只拿个引用
-            self.win.start_cast(serial, self.quality_combo.currentData())
+            self.win.start_cast(serial, self.quality_combo.currentData(), opts)
         except Exception as exc:  # noqa: BLE001
             self.start_btn.setEnabled(True)
             self.start_btn.setText("开始投屏")
@@ -7853,7 +7891,9 @@ class AutomationDialog(QtWidgets.QDialog):
 
         self.setWindowTitle("自动化")
         self.setMinimumSize(700, 560)
-        self.setStyleSheet(qss())
+        self.setStyleSheet(
+            qss() + "\nQDialog { background: %s; }" % theme.current().colors.get("bg-page", "#0e1015")
+        )
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(18, 16, 18, 14)
@@ -8016,6 +8056,11 @@ class AutomationDialog(QtWidgets.QDialog):
         b_run.setToolTip("真的跑一遍")
         b_run.clicked.connect(self._run_now)
         row.addWidget(b_run)
+        b_macro = QtWidgets.QPushButton("键鼠宏")
+        b_macro.setObjectName("Ghost")
+        b_macro.setToolTip("录一段键鼠动作再循环放：挂机钓鱼、挥剑练经验、收菜")
+        b_macro.clicked.connect(self._open_macro)
+        row.addWidget(b_macro)
         row.addStretch(1)
         b_close = QtWidgets.QPushButton("关闭")
         b_close.setObjectName("Ghost")
@@ -8062,6 +8107,9 @@ class AutomationDialog(QtWidgets.QDialog):
             Action(type=ACTION_FPS_HIDE, value=""),
             Action(type=ACTION_RESTORE, value=""),
         ]
+
+    def _open_macro(self) -> None:
+        MacroDialog(self.win).exec()
 
     def _add_tpl(self, kind: str) -> None:
         kinds = ["start", "stop"] if kind == "both" else [kind]
@@ -8563,6 +8611,303 @@ class _SongRow(QtWidgets.QWidget):
     def _set(self, pm) -> None:
         if pm is not None:
             self.cover.setPixmap(pm)
+
+
+class MacroDialog(QtWidgets.QDialog):
+    """键鼠宏：录一段，然后循环放。
+
+    只做外部键鼠模拟 —— 不进游戏进程、不读内存、不改游戏文件。
+    录的时候轮询系统键盘状态，放的时候走 SendInput，跟你自己按没区别。
+    """
+
+    def __init__(self, win: "MainWindow"):
+        super().__init__(win)
+        self.win = win
+        self.rec: object = None
+        self.player: object = None
+        self._rec_done = False
+        self._play_done = False
+
+        self.setWindowTitle("键鼠宏")
+        self.setMinimumSize(680, 470)
+        self.resize(700, 500)
+        self.setStyleSheet(
+            qss() + "\nQDialog { background: %s; }" % theme.current().colors.get("bg-page", "#0e1015")
+        )
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(18, 16, 18, 14)
+        lay.setSpacing(9)
+
+        head = QtWidgets.QLabel("它只干一件事：把你按过的键再按一遍")
+        head.setObjectName("Section")
+        lay.addWidget(head)
+
+        warn = QtWidgets.QLabel(
+            "外部模拟：不注入游戏、不读内存、不改文件，和你自己手按一样。"
+            "别指望它躲反作弊——公共服里按人肉频率连点，一样会被记录。"
+            "挂机钓鱼 / 挥剑练经验 / 收菜循环，这几样最合适。"
+        )
+        warn.setObjectName("Small")
+        warn.setWordWrap(True)
+        lay.addWidget(warn)
+
+        # ---- 选择已有的宏 ----
+        pick = QtWidgets.QHBoxLayout()
+        pick.setSpacing(8)
+        pick.addWidget(self._lab("宏"))
+        self.macro_box = QtWidgets.QComboBox()
+        self.macro_box.setObjectName("Mini")
+        self.macro_box.setMinimumWidth(240)
+        self.macro_box.currentIndexChanged.connect(self._on_pick)
+        pick.addWidget(self.macro_box, 1)
+        b_ref = QtWidgets.QPushButton("刷新")
+        b_ref.setObjectName("Mini")
+        b_ref.clicked.connect(self._reload)
+        pick.addWidget(b_ref)
+        b_del = QtWidgets.QPushButton("删除")
+        b_del.setObjectName("Danger")
+        b_del.setFixedHeight(26)
+        b_del.clicked.connect(self._del)
+        pick.addWidget(b_del)
+        lay.addLayout(pick)
+
+        self.info = QtWidgets.QLabel("")
+        self.info.setObjectName("Small")
+        self.info.setWordWrap(True)
+        lay.addWidget(self.info)
+
+        # ---- 名字 + 保存 ----
+        srow = QtWidgets.QHBoxLayout()
+        srow.setSpacing(8)
+        self.name_edit = QtWidgets.QLineEdit()
+        self.name_edit.setPlaceholderText("录完给这条宏起个名字，比如「钓鱼右键循环」")
+        srow.addWidget(self.name_edit, 1)
+        b_save = QtWidgets.QPushButton("保存这段录制")
+        b_save.setObjectName("Primary")
+        b_save.setMinimumHeight(30)
+        b_save.clicked.connect(self._save)
+        srow.addWidget(b_save)
+        lay.addLayout(srow)
+
+        # ---- 回放参数 ----
+        opt = QtWidgets.QHBoxLayout()
+        opt.setSpacing(8)
+        opt.addWidget(self._lab("速度"))
+        self.speed_box = QtWidgets.QComboBox()
+        self.speed_box.setObjectName("Mini")
+        self.speed_box.setFixedWidth(86)
+        for label, val in (("0.5× 慢放", 0.5), ("1× 原速", 1.0), ("1.5×", 1.5),
+                           ("2×", 2.0), ("3×", 3.0)):
+            self.speed_box.addItem(label, val)
+        self.speed_box.setCurrentIndex(1)
+        opt.addWidget(self.speed_box)
+
+        opt.addWidget(self._lab("循环"))
+        self.loops_spin = QtWidgets.QSpinBox()
+        self.loops_spin.setObjectName("Mini")
+        self.loops_spin.setRange(1, 9999)
+        self.loops_spin.setValue(1)
+        self.loops_spin.setFixedWidth(72)
+        opt.addWidget(self.loops_spin)
+        self.chk_endless = QtWidgets.QCheckBox("一直循环（F12 停）")
+        opt.addWidget(self.chk_endless)
+        opt.addStretch(1)
+        lay.addLayout(opt)
+
+        opt2 = QtWidgets.QHBoxLayout()
+        opt2.setSpacing(8)
+        self.chk_front = QtWidgets.QCheckBox("只在游戏前台时动手")
+        self.chk_front.setChecked(True)
+        self.chk_front.setToolTip("游戏切走 15 秒就自动停，免得在桌面/别的窗口里乱按")
+        opt2.addWidget(self.chk_front)
+        opt2.addStretch(1)
+        self.hint_f12 = QtWidgets.QLabel("F12 是急停键：录制和回放时按一下都停")
+        self.hint_f12.setObjectName("Small")
+        opt2.addWidget(self.hint_f12)
+        lay.addLayout(opt2)
+
+        # ---- 三个大按钮 ----
+        brow = QtWidgets.QHBoxLayout()
+        brow.setSpacing(8)
+        self.b_rec = QtWidgets.QPushButton("● 开始录制（F12 停）")
+        self.b_rec.setObjectName("Primary")
+        self.b_rec.setMinimumHeight(40)
+        self.b_rec.clicked.connect(self._record)
+        brow.addWidget(self.b_rec, 1)
+        self.b_play = QtWidgets.QPushButton("▶ 回放")
+        self.b_play.setObjectName("Ghost")
+        self.b_play.setMinimumHeight(40)
+        self.b_play.clicked.connect(self._play)
+        brow.addWidget(self.b_play, 1)
+        self.b_stop = QtWidgets.QPushButton("■ 停止")
+        self.b_stop.setObjectName("Danger")
+        self.b_stop.setMinimumHeight(40)
+        self.b_stop.clicked.connect(self._stop)
+        brow.addWidget(self.b_stop)
+        lay.addLayout(brow)
+
+        self.status = QtWidgets.QLabel("准备就绪")
+        self.status.setObjectName("Small")
+        self.status.setWordWrap(True)
+        lay.addWidget(self.status)
+
+        tail = QtWidgets.QLabel(
+            "怎么用：开游戏 → 点「开始录制」→ 在游戏里做一遍（比如右键甩竿、等 3 秒、再右键）→ "
+            "按 F12 停 → 起名字保存 → 勾「一直循环」→ 点「回放」。\n"
+            "宏存在程序目录的「宏」文件夹里，拷走就能带走；删宏就是删那个 json。"
+        )
+        tail.setObjectName("Small")
+        tail.setWordWrap(True)
+        lay.addWidget(tail)
+        lay.addStretch(1)
+
+        frow = QtWidgets.QHBoxLayout()
+        frow.addStretch(1)
+        b_close = QtWidgets.QPushButton("关闭")
+        b_close.setObjectName("Ghost")
+        b_close.clicked.connect(self.accept)
+        frow.addWidget(b_close)
+        lay.addLayout(frow)
+
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(400)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
+        self._reload()
+
+    @staticmethod
+    def _lab(text: str) -> QtWidgets.QLabel:
+        lab = QtWidgets.QLabel(text)
+        lab.setObjectName("Small")
+        return lab
+
+    # ---------------------------------------------------------------- 宏列表
+    def _reload(self) -> None:
+        cur = self.macro_box.currentData()
+        self.macro_box.blockSignals(True)
+        self.macro_box.clear()
+        names = macro.list_macros()
+        for n in names:
+            self.macro_box.addItem(n, n)
+        if not names:
+            self.macro_box.addItem("（还没有宏，先录一段）", "")
+        if cur:
+            i = self.macro_box.findData(cur)
+            if i >= 0:
+                self.macro_box.setCurrentIndex(i)
+        self.macro_box.blockSignals(False)
+        self._on_pick()
+
+    def _on_pick(self) -> None:
+        name = self.macro_box.currentData()
+        if not name:
+            self.info.setText("还没有存下来的宏。点「开始录制」，录完存一条。")
+            return
+        data = macro.load_macro(name) or {}
+        events = data.get("events") or []
+        self.info.setText(f"{name} · {macro.describe(events)} · 存于 {data.get('created', '?')}")
+
+    def _del(self) -> None:
+        name = self.macro_box.currentData()
+        if not name:
+            return
+        if QtWidgets.QMessageBox.question(self, "删掉这条宏", f"「{name}」删了就找不回来了，确定？") \
+                != QtWidgets.QMessageBox.Yes:
+            return
+        macro.delete_macro(name)
+        self.status.setText(f"已删除 {name}")
+        self._reload()
+
+    # ---------------------------------------------------------------- 录制
+    def _record(self) -> None:
+        if self.player is not None and self.player.is_running():
+            self.status.setText("正在回放，先停一下再录")
+            return
+        if self.rec is not None and self.rec.is_running():
+            self.rec.stop()
+            return
+        self.rec = macro.Recorder()
+        self.rec.start()
+        self._rec_done = False
+        self.b_rec.setText("■ 停止录制")
+        self.b_play.setEnabled(False)
+        self.status.setText("录制中…去游戏里做你的操作，做完按 F12（或点这个按钮）停")
+
+    def _save(self) -> None:
+        if self.rec is None or not self.rec.events:
+            self.status.setText("还没有录到东西，先录一段")
+            return
+        name = self.name_edit.text().strip()
+        ok, msg = macro.save_macro(name, self.rec.events)
+        self.status.setText(msg)
+        if ok:
+            self._reload()
+            i = self.macro_box.findData(name)
+            if i >= 0:
+                self.macro_box.setCurrentIndex(i)
+
+    # ---------------------------------------------------------------- 回放
+    def _play(self) -> None:
+        if self.rec is not None and self.rec.is_running():
+            self.status.setText("还在录，先停了再放")
+            return
+        if self.player is not None and self.player.is_running():
+            return
+        events = []
+        if self.rec is not None and self.rec.events:
+            events = list(self.rec.events)
+        else:
+            name = self.macro_box.currentData()
+            data = macro.load_macro(name) if name else None
+            events = list((data or {}).get("events") or [])
+        if not events:
+            self.status.setText("这条宏是空的，先录一段或选一条有内容的")
+            return
+        loops = 100000 if self.chk_endless.isChecked() else self.loops_spin.value()
+        self.player = macro.Player(events, loops=loops,
+                                   speed=float(self.speed_box.currentData() or 1.0),
+                                   require_game=self.chk_front.isChecked())
+        self.player.start()
+        self._play_done = False
+        self.status.setText("回放中…要停就按 F12，或点「停止」")
+
+    def _stop(self) -> None:
+        if self.rec is not None and self.rec.is_running():
+            self.rec.stop()
+        if self.player is not None and self.player.is_running():
+            self.player.stop("你点了停止")
+        self.status.setText("已停止")
+
+    # ---------------------------------------------------------------- 状态刷新
+    def _tick(self) -> None:
+        if self.rec is not None and self.rec.is_running():
+            self.status.setText(f"录制中…已抓到 {len(self.rec.events)} 个动作，做完按 F12 停")
+            return
+        self.b_rec.setText("● 开始录制（F12 停）")
+        if self.rec is not None and self.rec.status == "stopped" and not self._rec_done:
+            self._rec_done = True
+            n = len(self.rec.events)
+            if n:
+                self.status.setText(
+                    f"录到了：{macro.describe(self.rec.events)} —— 起个名字点「保存这段录制」，或直接点「回放」")
+                if self.name_edit.text().strip() == "" and self.macro_box.currentData() == "":
+                    self.name_edit.setText("")
+            else:
+                self.status.setText("一个动作都没抓到。是不是没在游戏里操作，或者只按了 F12？")
+        if self.player is not None and not self.player.is_running() and not self._play_done:
+            self._play_done = True
+            self.status.setText(self.player.msg or ("回放结束" if self.player.status == "done" else "回放停了"))
+        elif self.player is not None and self.player.is_running():
+            self.b_play.setEnabled(True)
+
+    def closeEvent(self, ev) -> None:  # noqa: N802
+        try:
+            self._timer.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        self._stop()
+        super().closeEvent(ev)
 
 
 class LoginDialog(QtWidgets.QDialog):
@@ -13731,11 +14076,24 @@ class MainWindow(QtWidgets.QWidget):
         except Exception:  # noqa: BLE001
             return False
 
-    def start_cast(self, serial: str, quality: str):
+    def start_cast(self, serial: str, quality: str, opts: dict | None = None):
         if self.cast_running():
             self.toast("投屏窗口已经开着，先点「结束投屏」再开新的")
             return self.cast_proc
-        p = scrcpy_tool.start(serial, quality)
+        opts = dict(opts or {})
+        rec = ""
+        if opts.get("record"):
+            try:
+                rec = str(capture.video_path("投屏"))
+            except Exception:  # noqa: BLE001
+                rec = ""
+        p = scrcpy_tool.start(serial, quality,
+                              fps=int(opts.get("fps") or 0),
+                              record=rec,
+                              virtual=bool(opts.get("virtual")),
+                              no_audio=bool(opts.get("no_audio")))
+        if rec:
+            self.toast("投屏顺手录着，成品会放到：" + rec.split("\\")[-1])
         p.setParent(self)
         p.finished.connect(self._cast_exited)
         p.errorOccurred.connect(self._cast_err)
