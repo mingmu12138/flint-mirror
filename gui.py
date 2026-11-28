@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.5"
+APP_VERSION = "v1.12.6"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -1635,6 +1635,16 @@ class AddRemoteDialog(QtWidgets.QDialog):
 # 关于
 # ---------------------------------------------------------------------------
 CHANGELOG = [
+    (
+        "2026-11-28 · v1.12.6",
+        [
+            "新增：虚拟屏「开哪个 App」加了常用预设 —— 设置、浏览器（Chrome）、微信、QQ、B 站、抖音、网易云音乐，"
+            "一键选；手输包名的口子还留着。系统桌面那项也还在，但标明了小米 / 红米只会剩白屏",
+            "新增：投手机摄像头能调画面方向了 —— 不转 / 顺转 90° / 180° / 270°，手机横着放、倒着放当摄像头时能把画面转正；"
+            "走的是 --angle 纯客户端渲染，因为 --capture-orientation 一跟摄像头组合就报 Video encoding error",
+            "提示：想左右镜像就在投屏窗口里按 Alt+Shift+←（scrcpy 自带快捷键），面板上不放假开关",
+        ],
+    ),
     (
         "2026-11-28 · v1.12.5",
         [
@@ -6389,11 +6399,11 @@ class ScrcpyDialog(QtWidgets.QDialog):
         vr.addWidget(QtWidgets.QLabel("虚拟屏里开："))
         self.virt_app = QtWidgets.QComboBox()
         self.virt_app.setEditable(True)
-        self.virt_app.addItem("设置（推荐）", scrcpy_tool.VIRTUAL_DEFAULT_APP)
-        self.virt_app.addItem("系统桌面（小米/红米会只剩白屏）", "")
+        for label, val in scrcpy_tool.VIRTUAL_APPS:
+            self.virt_app.addItem(label, val)
         self.virt_app.setToolTip(
             "默认起「设置」：scrcpy 不指定时起系统桌面，而小米 HyperOS 的桌面在虚拟屏上只有一块纯白。\n"
-            "也能直接手输包名（如 com.tencent.mobileqq）"
+            "列表里是常见的几个，手机上没装的会启动失败；也能直接手输包名（如 com.tencent.mobileqq）"
         )
         self.virt_app.setMinimumWidth(210)
         vr.addWidget(self.virt_app)
@@ -6420,6 +6430,16 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.cam_face.addItem("外接 / 其他", "external")
         self.cam_face.setToolTip("多摄机型里后置有超广角、长焦好几颗，scrcpy 默认只取主摄")
         cr.addWidget(self.cam_face)
+        cr.addSpacing(6)
+        cr.addWidget(QtWidgets.QLabel("画面方向："))
+        self.cam_angle = QtWidgets.QComboBox()
+        for label, val in scrcpy_tool.CAM_ANGLES:
+            self.cam_angle.addItem(label, val)
+        self.cam_angle.setToolTip(
+            "手机横着放、倒着放当摄像头时，用这个把画面转正。\n"
+            "想左右镜像的话，在投屏窗口里按 Alt+Shift+←（scrcpy 自带快捷键）"
+        )
+        cr.addWidget(self.cam_angle)
         self.chk_torch = QtWidgets.QCheckBox("开手电筒")
         self.chk_torch.setToolTip("摄像头模式独有的，照亮用；只在投摄像头期间亮，关窗口就灭")
         cr.addWidget(self.chk_torch)
@@ -6878,6 +6898,7 @@ class ScrcpyDialog(QtWidgets.QDialog):
             "virtual_size": str(self.virt_size.currentData() or ""),
             "camera": self.chk_camera.isChecked(),
             "camera_facing": str(self.cam_face.currentData() or "back"),
+            "camera_angle": int(self.cam_angle.currentData() or 0),
             "camera_torch": self.chk_torch.isChecked(),
         }
         try:
@@ -14697,6 +14718,7 @@ class MainWindow(QtWidgets.QWidget):
                               virtual_size=str(opts.get("virtual_size") or ""),
                               camera=bool(opts.get("camera")),
                               camera_facing=str(opts.get("camera_facing") or "back"),
+                              camera_angle=int(opts.get("camera_angle") or 0),
                               camera_torch=bool(opts.get("camera_torch")))
         if rec:
             self.toast("投屏顺手录着，成品会放到：" + rec.split("\\")[-1])

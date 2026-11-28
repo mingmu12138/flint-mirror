@@ -34,6 +34,26 @@ VIRTUAL_SIZES = [
     ("1600 × 900", "1600x900"),
     ("1920 × 1080", "1920x1080"),
 ]
+# 虚拟屏里能一键起的常用 App。装不装是用户手机的事，包名是各厂商通用的，
+# 没装的会启动失败，explain() 里已经把那种报错翻成人话。
+VIRTUAL_APPS = [
+    ("设置（推荐）", VIRTUAL_DEFAULT_APP),
+    ("浏览器（走 Chrome）", "com.android.chrome"),
+    ("微信", "com.tencent.mm"),
+    ("QQ", "com.tencent.mobileqq"),
+    ("B 站", "tv.danmaku.bili"),
+    ("抖音", "com.ss.android.ugc.aweme"),
+    ("网易云音乐", "com.netease.cloudmusic"),
+    ("系统桌面（小米/红米只有白屏）", ""),
+]
+# 摄像头画面的旋转角度。scrcpy 的 --capture-orientation 一跟摄像头组合就报
+# "Video encoding error"，所以走客户端的 --angle（只转显示，不碰采集）。
+CAM_ANGLES = [
+    ("不转（默认）", 0),
+    ("顺转 90°", 90),
+    ("转 180°（放倒了用）", 180),
+    ("转 270°", 270),
+]
 
 
 def _roots():
@@ -358,7 +378,7 @@ def build_args(serial: str = "", quality: str = "normal", fps: int = 0, record: 
                virtual: bool = False, no_audio: bool = False,
                virtual_app: "str | None" = None, virtual_size: str = "",
                camera: bool = False, camera_facing: str = "", camera_id: str = "",
-               camera_torch: bool = False) -> list:
+               camera_torch: bool = False, camera_angle: int = 0) -> list:
     """把参数拼成列表（纯函数，方便自检；start() 只负责拉起进程）。"""
     args = ["--window-title=燧镜投屏", "--keyboard=uhid", "--mouse=sdk"]
 
@@ -371,6 +391,10 @@ def build_args(serial: str = "", quality: str = "normal", fps: int = 0, record: 
             args.append("--camera-facing=" + str(camera_facing))
         if camera_torch:
             args.append("--camera-torch")
+        # 画面方向用 --angle 转（纯客户端渲染）。--capture-orientation 一跟摄像头
+        # 组合就报 Video encoding error，实测过，别换回去。
+        if int(camera_angle or 0) % 360:
+            args.append("--angle=%d" % (int(camera_angle) % 360))
         args.append("--no-audio")
     else:
         args += ["--turn-screen-off", "--stay-awake"]
@@ -443,7 +467,7 @@ def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str =
           virtual: bool = False, no_audio: bool = False,
           virtual_app: "str | None" = None, virtual_size: str = "",
           camera: bool = False, camera_facing: str = "", camera_id: str = "",
-          camera_torch: bool = False) -> QtCore.QProcess:
+          camera_torch: bool = False, camera_angle: int = 0) -> QtCore.QProcess:
     """拉起 scrcpy 窗口。返回 QProcess，调用方自己接 finished 信号。
 
     可选的高级档（scrcpy 5.x 原生支持，不是我们造的功能）：
@@ -454,11 +478,13 @@ def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str =
       no_audio  —— 不把手机声音转到电脑（用手机音频接收那套时勾它，免得两边抢）
       camera    —— 走手机摄像头（Camera2 原始流，没有厂商美颜/HDR 那些算法）
       camera_facing / camera_id —— 用哪颗镜头（前置/后置，或直接给 camera id）
+      camera_angle —— 摄像头画面旋转（0/90/180/270，纯客户端转显示）
     拖拽互传是 scrcpy 自带的：把文件拖进投屏窗口，它就推到手机 Download 里。
     """
     args = build_args(serial, quality, fps=fps, record=record, virtual=virtual, no_audio=no_audio,
                       virtual_app=virtual_app, virtual_size=virtual_size, camera=camera,
-                      camera_facing=camera_facing, camera_id=camera_id, camera_torch=camera_torch)
+                      camera_facing=camera_facing, camera_id=camera_id, camera_torch=camera_torch,
+                      camera_angle=camera_angle)
 
     if camera:
         # 息屏状态下摄像头流是黑的（见 wake_screen 注释），先亮屏
