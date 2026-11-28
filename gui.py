@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import logging
 import math
 import os
@@ -103,7 +104,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.8"
+APP_VERSION = "v1.12.9"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -4223,30 +4224,56 @@ def _skin_icon(color: str = "#8b95a5") -> QtGui.QIcon:
     return QtGui.QIcon(pm)
 
 
-def _skin_swatch(t) -> QtWidgets.QLabel:
-    """皮肤的小色卡：底色 + 描边 + 主色，一眼看出长什么样。"""
-    pm = QtGui.QPixmap(46, 30)
+def _skin_preview(t, w: int = 104, h: int = 58) -> QtWidgets.QLabel:
+    """主题卡片上的迷你界面：窗口底 + 顶栏 + 左栏 + 两张卡 + 主色按钮。
+
+    这里刻意直接用 t.colors 自己的值画，不走"翻译成当前主题"那条路，
+    否则每张卡都长一样，看不出区别。
+    """
+    c = t.colors
+    pm = QtGui.QPixmap(w, h)
     pm.fill(Qt.transparent)
     p = QtGui.QPainter(pm)
     p.setRenderHint(QtGui.QPainter.Antialiasing)
+
+    def box(x, y, w_, h_, color, radius=3.0, pen=None):
+        if pen:
+            p.setPen(QtGui.QPen(QtGui.QColor(pen), 1.0))
+        else:
+            p.setPen(Qt.NoPen)
+        p.setBrush(QtGui.QColor(color))
+        p.drawRoundedRect(QtCore.QRectF(x, y, w_, h_), radius, radius)
+
+    # 窗口底 + 外框
+    box(0.5, 0.5, w - 1, h - 1, c.get("bg-page", "#0e1015"), 7, c.get("line-1", "#242b38"))
+    # 顶栏
+    box(1.0, 1.0, w - 2.0, 13.0, c.get("bg-card", "#161a22"), 6)
+    # 左侧栏
+    box(1.0, 14.0, 24.0, h - 15.0, c.get("bg-sunken", "#0b0e13"), 0)
+    # 两张卡
+    box(30.0, 18.0, w - 36.0, 15.0, c.get("bg-card", "#161a22"), 3, c.get("line-1", "#242b38"))
+    box(30.0, 36.0, w - 36.0, 15.0, c.get("bg-raised", "#1a1f29"), 3, c.get("line-1", "#242b38"))
+    # 主色：一条按钮 + 一条淡文字
+    box(30.0, 54.0, 24.0, 6.0, c.get("accent", "#20ffe0"), 3)
     p.setPen(Qt.NoPen)
-    p.setBrush(QtGui.QColor(t.colors.get("bg-card", "#161a22")))
-    p.drawRoundedRect(QtCore.QRectF(0, 0, 46, 30), 6, 6)
-    p.setBrush(QtGui.QColor(t.colors.get("accent", "#20ffe0")))
-    p.drawRoundedRect(QtCore.QRectF(32, 7, 8, 16), 3, 3)
-    p.setPen(QtGui.QPen(QtGui.QColor(t.colors.get("line-1", "#242b38")), 1))
-    p.setBrush(Qt.NoBrush)
-    p.drawRoundedRect(QtCore.QRectF(0.5, 0.5, 45, 29), 6, 6)
+    p.setBrush(QtGui.QColor(c.get("fg-2", "#8b95a5")))
+    p.drawRoundedRect(QtCore.QRectF(58.0, 55.0, 20.0, 4.0), 2, 2)
     p.end()
+
     lb = QtWidgets.QLabel()
-    lb.setFixedSize(46, 30)
+    lb.setFixedSize(w, h)
     lb.setPixmap(pm)
+    lb.setAttribute(Qt.WA_TransparentForMouseEvents, True)
     return lb
 
 
 class SkinRow(QtWidgets.QFrame):
 
-    """皮肤列表里的一行：色卡 + 名字 + 状态，点一下就换。"""
+    """主题列表里的一张卡：迷你预览 + 名字，点一下就换。
+
+    以前是一行一条横杠，一屏放不下几套；现在改成小卡片，网格排，
+    一行能摆三四个，套数再多也不用翻。
+    """
 
     clicked = QtCore.Signal(str)
 
@@ -4255,35 +4282,288 @@ class SkinRow(QtWidgets.QFrame):
         self.key = t.key
         self.setObjectName("SkinRow")
         self.setCursor(Qt.PointingHandCursor)
-        row = QtWidgets.QHBoxLayout(self)
-        row.setContentsMargins(10, 7, 12, 7)
-        row.setSpacing(11)
-        row.addWidget(_skin_swatch(t))
+        self.setFixedWidth(112)
 
-        col = QtWidgets.QVBoxLayout()
-        col.setSpacing(1)
+        v = QtWidgets.QVBoxLayout(self)
+        v.setContentsMargins(3, 3, 3, 5)
+        v.setSpacing(4)
+        v.addWidget(_skin_preview(t), 0, Qt.AlignHCenter)
+
         name = QtWidgets.QLabel(t.name)
         name.setObjectName("SkinName")
-        desc = QtWidgets.QLabel(t.desc or "")
-        desc.setObjectName("Hint")
-        col.addWidget(name)
-        col.addWidget(desc)
-        row.addLayout(col, 1)
+        name.setAlignment(Qt.AlignCenter)
+        v.addWidget(name)
 
-        tag = QtWidgets.QLabel("正在使用" if active else "点一下切换")
-        tag.setObjectName("SkinTag" if active else "Hint")
-        row.addWidget(tag)
+        self.setToolTip((t.desc or t.name).strip())
 
-        extra = " QFrame#SkinRow { border-color:#1c4a43; background:#102a27; }" if active else ""
+        # 注意：控件级样式只经过"写死色值→当前主题"的翻译，@token 不处理，
+        # 所以这里沿用老色值，换主题时会被自动翻成新值。
+        extra = (
+            " QFrame#SkinRow { border-color:#1c4a43; background:#102a27; }"
+            " QLabel#SkinName { color:#f6f9fe; }"
+        ) if active else ""
         self.setStyleSheet(
             "QFrame#SkinRow { background:#141822; border:1px solid #232a36; border-radius:10px; }"
-            "QFrame#SkinRow:hover { border-color:#3a4455; }" + extra
+            "QFrame#SkinRow:hover { border-color:#3a4455; }"
+            "QLabel#SkinName { color:#8b95a5; }" + extra
         )
 
     def mouseReleaseEvent(self, ev) -> None:
         if ev.button() == Qt.LeftButton:
             self.clicked.emit(self.key)
         super().mouseReleaseEvent(ev)
+
+
+def _hex2rgb(s: str) -> Tuple[int, int, int]:
+    s = (s or "").strip().lstrip("#")
+    if len(s) == 3:
+        s = "".join(ch * 2 for ch in s)
+    try:
+        return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    except (ValueError, IndexError):
+        return (0, 0, 0)
+
+
+def _rgb2hex(r: float, g: float, b: float) -> str:
+    return "#%02x%02x%02x" % (
+        max(0, min(255, int(round(r)))), max(0, min(255, int(round(g)))), max(0, min(255, int(round(b)))),
+    )
+
+
+def _mix(a: str, b: str, t: float) -> str:
+    """把 a 往 b 掺 t（0~1）。"""
+    ar, ag, ab = _hex2rgb(a)
+    br, bg_, bb = _hex2rgb(b)
+    return _rgb2hex(ar + (br - ar) * t, ag + (bg_ - ag) * t, ab + (bb - ab) * t)
+
+
+def _shade(c: str, k: float) -> str:
+    """k>1 往白提，k<1 往黑压。"""
+    return _mix(c, "#ffffff" if k >= 1 else "#000000", abs(k - 1))
+
+
+def _luma(c: str) -> float:
+    r, g, b = _hex2rgb(c)
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def _theme_colors(page: str, card: str, accent: str, fg: str, base: dict) -> dict:
+    """四个主心骨色 → 整套令牌。
+
+    只让用户定"底色 / 卡片底 / 主色 / 文字"，其余（描边、悬停、按键深浅、
+    主色的 hover/press、浅色下的状态色）全从这四个推出来 —— 否则二十多个
+    令牌逐个手调，调完一定花。
+    """
+    c = dict(base)
+    dark = _luma(page) < 110
+
+    c["bg-page"] = page
+    c["bg-sunken"] = _mix(page, "#000000", 0.10) if dark else _shade(page, 0.96)
+    c["bg-off2"] = _mix(page, card, 0.10)
+    c["bg-off"] = _mix(page, card, 0.14)
+    c["bg-card"] = card
+    c["bg-raised"] = _shade(card, 1.06) if dark else _shade(card, 0.98)
+    c["bg-button"] = _shade(card, 1.11) if dark else _shade(card, 0.955)
+    c["bg-hover"] = _shade(card, 1.20) if dark else _shade(card, 0.925)
+    c["line-1"] = _mix(card, fg, 0.10)
+    c["line-2"] = _mix(card, fg, 0.24)
+    c["line-sep"] = _mix(card, fg, 0.14)
+
+    c["fg-title"] = _shade(fg, 1.04) if dark else _shade(fg, 0.92)
+    c["fg-0"] = fg
+    c["fg-1"] = _mix(fg, page, 0.26)
+    c["fg-2"] = _mix(fg, page, 0.48)
+    c["fg-3"] = _mix(fg, page, 0.63)
+    c["fg-off"] = _mix(fg, page, 0.74)
+
+    c["accent"] = accent
+    c["accent-strong"] = _mix(accent, "#000000", 0.16)
+    c["accent-hover"] = _mix(accent, "#ffffff", 0.18)
+    c["accent-press"] = _mix(accent, "#000000", 0.30)
+    c["accent-dim"] = _mix(accent, "#000000", 0.09)
+    c["accent-bg"] = _mix(page, accent, 0.16 if dark else 0.12)
+    c["accent-line"] = _mix(page, accent, 0.38 if dark else 0.30)
+    c["on-accent"] = "#ffffff" if _luma(accent) < 165 else "#12100f"
+
+    if not dark:
+        # 浅底上原来那组状态色太亮，压深一档，不然红字看不清
+        c.update({
+            "state-danger": "#c62d2d",
+            "state-alert": "#b26a00",
+            "state-warn": "#8a6d00",
+            "state-info": "#6b5bd2",
+            "state-ok": "#1f8a5f",
+        })
+    return c
+
+
+def _solid_icon(color: str, w: int = 46, h: int = 22) -> QtGui.QIcon:
+    """纯色块当图标用：不走样式表，选什么色就显示什么色。"""
+    pm = QtGui.QPixmap(w, h)
+    pm.fill(QtGui.QColor(color))
+    p = QtGui.QPainter(pm)
+    p.setPen(QtGui.QPen(QtGui.QColor(_shade(color, 1.25 if _luma(color) < 120 else 0.8)), 1))
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(QtCore.QRectF(0.5, 0.5, w - 1, h - 1), 4, 4)
+    p.end()
+    return QtGui.QIcon(pm)
+
+
+class CustomThemeDialog(QtWidgets.QDialog):
+
+    """自己配色：定底色 / 卡片底 / 主色 / 文字四样，其余自动推。
+
+    点「应用」先看效果（只改内存，不落盘）；满意了再「保存成主题」，
+    存成 themes 里一个 json，下次开机还在。
+    """
+
+    def __init__(self, win):
+        super().__init__(win)
+        self.win = win
+        self.setWindowTitle("自定义颜色")
+        self.setFixedWidth(420)
+        self.setStyleSheet(qss())
+        self._base = dict(theme.current().colors)
+
+        v = QtWidgets.QVBoxLayout(self)
+        v.setContentsMargins(16, 14, 16, 14)
+        v.setSpacing(10)
+
+        tip = QtWidgets.QLabel(
+            "底子定这四样就够了：底色决定明暗，卡片底比它浅一档，主色管按钮和强调，"
+            "文字色管所有字。描边、悬停、按下、浅色下的报错色，都从这四个自动推。"
+        )
+        tip.setObjectName("Hint")
+        tip.setWordWrap(True)
+        v.addWidget(tip)
+
+        self._pick = {
+            "page": QtWidgets.QPushButton(),
+            "card": QtWidgets.QPushButton(),
+            "accent": QtWidgets.QPushButton(),
+            "fg": QtWidgets.QPushButton(),
+        }
+        rows = (
+            ("page", "底色", "整个窗口的底，明暗就靠它"),
+            ("card", "卡片底", "卡片、面板的底，一般比底色浅一点"),
+            ("accent", "主色", "按钮、选中、强调，最跳的那一个"),
+            ("fg", "文字", "正文和标题的颜色，跟底色反着来"),
+        )
+        self._val = {}
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
+        for i, (k, label, hint) in enumerate(rows):
+            lb = QtWidgets.QLabel(label)
+            lb.setFixedWidth(46)
+            b = self._pick[k]
+            b.setCursor(Qt.PointingHandCursor)
+            b.setIconSize(QtCore.QSize(46, 22))
+            b.setFixedSize(74, 30)
+            b.setStyleSheet(
+                "QPushButton{padding:2px; background:transparent; border:1px solid rgba(128,128,128,80);"
+                " border-radius:6px;} QPushButton:hover{border:1px solid rgba(128,128,128,160);}"
+            )
+            b.clicked.connect(lambda _=False, kk=k: self._choose(kk))
+            hexlb = QtWidgets.QLabel()
+            hexlb.setObjectName("Hint")
+            hexlb.setFixedWidth(64)
+            h = QtWidgets.QLabel(hint)
+            h.setObjectName("Hint")
+            grid.addWidget(lb, i, 0)
+            grid.addWidget(b, i, 1)
+            grid.addWidget(hexlb, i, 2)
+            grid.addWidget(h, i, 3, 1, 1)
+            self._val[k] = hexlb
+        grid.setColumnStretch(3, 1)
+        v.addLayout(grid)
+
+        v.addWidget(_divider())
+
+        bar = QtWidgets.QHBoxLayout()
+        bar.setSpacing(8)
+        cancel = QtWidgets.QPushButton("取消")
+        cancel.setObjectName("Ghost")
+        cancel.clicked.connect(self.reject)
+        apply_ = QtWidgets.QPushButton("应用预览")
+        apply_.setObjectName("Ghost")
+        apply_.clicked.connect(self._apply)
+        save = QtWidgets.QPushButton("保存成主题")
+        save.setObjectName("Primary")
+        save.clicked.connect(self._save)
+        bar.addWidget(cancel)
+        bar.addStretch(1)
+        bar.addWidget(apply_)
+        bar.addWidget(save)
+        v.addLayout(bar)
+
+        self._sync()
+
+    def _current(self) -> dict:
+        return {
+            "page": self._base.get("bg-page", "#0e1015"),
+            "card": self._base.get("bg-card", "#161a22"),
+            "accent": self._base.get("accent", "#20ffe0"),
+            "fg": self._base.get("fg-0", "#eef3fb"),
+        }
+
+    def _sync(self) -> None:
+        cur = self._current()
+        for k, b in self._pick.items():
+            b.setIcon(_solid_icon(cur[k]))
+            self._val[k].setText(cur[k].lower())
+
+    def _choose(self, key: str) -> None:
+        cur = self._current()[key]
+        col = QtWidgets.QColorDialog.getColor(
+            QtGui.QColor(cur), self, "选颜色", QtWidgets.QColorDialog.DontUseNativeDialog
+        )
+        if not col.isValid():
+            return
+        val = col.name().lower()
+        if key == "page":
+            self._base["bg-page"] = val
+        elif key == "card":
+            self._base["bg-card"] = val
+        elif key == "accent":
+            self._base["accent"] = val
+        else:
+            self._base["fg-0"] = val
+        self._sync()
+
+    def _derived(self) -> dict:
+        cur = self._current()
+        return _theme_colors(cur["page"], cur["card"], cur["accent"], cur["fg"], self._base)
+
+    def _apply(self) -> None:
+        theme.set_overrides(self._derived())
+        apply_theme()
+        self.win.toast("已应用，满意就点「保存成主题」")
+
+    def _save(self) -> None:
+        colors = self._derived()
+        name = "我的配色"
+        stem = "我的配色"
+        try:
+            folder = theme.themes_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            data = {
+                "key": "custom",
+                "name": name,
+                "author": "自己",
+                "desc": "自定义：底色 " + self._current()["page"] + " / 主色 " + self._current()["accent"],
+                "colors": colors,
+                "radius": dict(theme.current().radius),
+            }
+            path = folder / (stem + ".json")
+            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            theme.scan(force=True)
+            theme.set_overrides({})
+            self.win.set_theme("custom")
+            self.win.toast("已存成主题：我的配色")
+            self.accept()
+        except Exception as exc:  # noqa: BLE001
+            self.win.toast("保存失败：" + str(exc), False)
 
 
 def _import_skin_file(parent, win) -> bool:
@@ -4470,8 +4750,10 @@ class SkinPanel(QtWidgets.QDialog):
         tip.setObjectName("Hint")
         v.addWidget(tip)
 
-        self.rows = QtWidgets.QVBoxLayout()
-        self.rows.setSpacing(6)
+        # 主题：小卡片网格，一行摆三张，套数多了也不用翻
+        self.rows = QtWidgets.QGridLayout()
+        self.rows.setSpacing(8)
+        self.rows.setContentsMargins(0, 0, 0, 0)
         v.addLayout(self.rows)
 
         v.addSpacing(4)
@@ -4539,6 +4821,9 @@ class SkinPanel(QtWidgets.QDialog):
 
         bar = QtWidgets.QHBoxLayout()
         bar.setSpacing(8)
+        cus = QtWidgets.QPushButton("自定义颜色…")
+        cus.setObjectName("Ghost")
+        cus.clicked.connect(self._custom)
         imp = QtWidgets.QPushButton("导入主题文件…")
         imp.setObjectName("Ghost")
         imp.clicked.connect(lambda: _import_skin_file(self, self.win) and self._sync())
@@ -4548,6 +4833,7 @@ class SkinPanel(QtWidgets.QDialog):
         done = QtWidgets.QPushButton("完成")
         done.setObjectName("Primary")
         done.clicked.connect(self.accept)
+        bar.addWidget(cus)
         bar.addWidget(imp)
         bar.addWidget(folder)
         bar.addStretch(1)
@@ -4575,13 +4861,18 @@ class SkinPanel(QtWidgets.QDialog):
             if w is not None:
                 w.deleteLater()
         cur = theme.current().key
-        for t in theme.available():
-            row = SkinRow(t, t.key == cur)
-            row.clicked.connect(self._pick)
-            self.rows.addWidget(row)
+        cols = 3
+        for i, t in enumerate(theme.available()):
+            card = SkinRow(t, t.key == cur)
+            card.clicked.connect(self._pick)
+            self.rows.addWidget(card, i // cols, i % cols, Qt.AlignHCenter)
 
     def _pick(self, key: str) -> None:
         self.win.set_theme(key)
+        self._fill()
+
+    def _custom(self) -> None:
+        CustomThemeDialog(self.win).exec()
         self._fill()
 
     def _pick_mode(self, mode: str) -> None:
@@ -4818,10 +5109,11 @@ class SettingsDialog(QtWidgets.QDialog):
             if w is not None:
                 w.deleteLater()
         cur = theme.current().key
-        for t in theme.available():
-            row = SkinRow(t, t.key == cur)
-            row.clicked.connect(self._skin_pick)
-            lay.addWidget(row)
+        cols = 5
+        for i, t in enumerate(theme.available()):
+            card = SkinRow(t, t.key == cur)
+            card.clicked.connect(self._skin_pick)
+            lay.addWidget(card, i // cols, i % cols)
 
     def _skin_pick(self, key: str) -> None:
         self.win.set_theme(key)
@@ -4830,6 +5122,10 @@ class SettingsDialog(QtWidgets.QDialog):
     def _skin_import(self) -> None:
         if _import_skin_file(self, self.win):
             self._fill_skin_rows()
+
+    def _skin_custom(self) -> None:
+        CustomThemeDialog(self.win).exec()
+        self._fill_skin_rows()
 
     def _skin_folder(self) -> None:
         _open_skin_folder(self.win)
@@ -5144,26 +5440,31 @@ class SettingsDialog(QtWidgets.QDialog):
         tip_skin.setObjectName("Small")
         tip_skin.setWordWrap(True)
         lay.addWidget(tip_skin)
-        self._skin_rows = QtWidgets.QVBoxLayout()
-        self._skin_rows.setSpacing(6)
+        self._skin_rows = QtWidgets.QGridLayout()
+        self._skin_rows.setSpacing(8)
         lay.addLayout(self._skin_rows)
         self._fill_skin_rows()
 
         row_skin = QtWidgets.QHBoxLayout()
         row_skin.setSpacing(8)
+        bt_skin_cus = QtWidgets.QPushButton("自定义颜色…")
+        bt_skin_cus.setObjectName("Ghost")
+        bt_skin_cus.clicked.connect(self._skin_custom)
         bt_skin_imp = QtWidgets.QPushButton("导入主题文件…")
         bt_skin_imp.setObjectName("Ghost")
         bt_skin_imp.clicked.connect(self._skin_import)
         bt_skin_dir = QtWidgets.QPushButton("打开主题文件夹")
         bt_skin_dir.setObjectName("Ghost")
         bt_skin_dir.clicked.connect(self._skin_folder)
+        row_skin.addWidget(bt_skin_cus)
         row_skin.addWidget(bt_skin_imp)
         row_skin.addWidget(bt_skin_dir)
         row_skin.addStretch(1)
         lay.addLayout(row_skin)
 
         note_skin = QtWidgets.QLabel(
-            "想自己做一套：打开主题文件夹，照着「自定义示例.json」改颜色，存成任意名字再进来导入。"
+            "自定义颜色只定底色 / 卡片底 / 主色 / 文字四样，描边和悬停深浅自动推；"
+            "想逐条改，打开主题文件夹照「自定义示例.json」写完再导入。"
         )
         note_skin.setObjectName("Hint")
         note_skin.setWordWrap(True)
