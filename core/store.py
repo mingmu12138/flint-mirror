@@ -639,6 +639,8 @@ class Config:
         # （无线调试的端口每次重开都会变，只有 mDNS 名字是稳定的）
         self.cast_serial: str = ""
         self.cast_wifi: str = ""
+        # 性能走势记录（默认关）：开了才在内存里留最近半小时，关掉立刻清空
+        self.hw_record: bool = False
         # 游戏模式偏好：记住用户想用的电源计划 / 分辨率，下次开模式直接套这一套
         # gm_plan 空 = 走默认高性能；gm_res 空 = 不动分辨率
         self.gm_plan: str = ""
@@ -721,6 +723,7 @@ class Config:
         self.recv_dir = str(raw.get("recv_dir") or "")[:400]
         self.cast_serial = str(raw.get("cast_serial") or "")[:64]
         self.cast_wifi = str(raw.get("cast_wifi") or "")[:64]
+        self.hw_record = bool(raw.get("hw_record", False))
 
         self.hotkey_enabled = bool(raw.get("hotkey_enabled", True))
         raw_on = raw.get("hotkey_on") or {}
@@ -1054,6 +1057,7 @@ class Config:
             "recv_dir": self.recv_dir,
             "cast_serial": getattr(self, "cast_serial", ""),
             "cast_wifi": getattr(self, "cast_wifi", ""),
+            "hw_record": bool(getattr(self, "hw_record", False)),
             "hotkey_enabled": self.hotkey_enabled,
             "hotkey_on": dict(self.hotkey_on),
             "replay_max_gb": self.replay_max_gb,

@@ -32,7 +32,7 @@ from core import (ace, artwork, audioout, automation, cacheclean, crosshair, cap
                     clipboard_lan, fps_hud, ipc, netspeed, power, recorder, replay, scaling, spec,
                     startup, steamaccount, steamlib, steamnames, storage, store, sysmon, theme,
                     traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool, stats,
-                    mcwin, macro)
+                    mcwin, macro, hwreport)
 from core import player as mplayer
 from core.hotkey import (
     MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK, HotkeyManager,
@@ -4660,6 +4660,45 @@ class SettingsDialog(QtWidgets.QDialog):
         else:
             self.win.toast(f"清掉 {storage.human(freed)}（{removed} 个文件）")
 
+    # ---------------------------------------------------------------- 性能记录
+    def _on_hwrec(self, on: bool) -> None:
+        self.cfg.hw_record = bool(on)
+        self.cfg.save()
+        try:
+            rec = getattr(self.win, "hwrec", None)
+            if rec is not None:
+                rec.on = bool(on)
+                if not on:
+                    rec.clear()
+        except Exception:  # noqa: BLE001
+            pass
+        self._refresh_hw()
+        self.win.toast("性能记录已打开，跑一会儿再导出" if on else "性能记录已关闭，内存里那份已经清掉")
+
+    def _refresh_hw(self) -> None:
+        rec = getattr(self.win, "hwrec", None)
+        n = rec.count() if rec is not None else 0
+        span = rec.span() if rec is not None else 0.0
+        if not getattr(self.cfg, "hw_record", False):
+            self.hw_info.setText("关着：只有面板上那四条实时进度，什么都不记")
+        elif n < 3:
+            self.hw_info.setText("已打开，刚开始记（大约 2.5 秒一个点）")
+        else:
+            self.hw_info.setText("已记 %d 个点，覆盖 %d 分 %d 秒（上限 30 分钟）"
+                                 % (n, int(span // 60), int(span % 60)))
+
+    def _export_hw(self) -> None:
+        rec = getattr(self.win, "hwrec", None)
+        samples = list(rec.samples) if rec is not None else []
+        ok, msg, files = hwreport.export(samples)
+        self.win.toast(msg, ok)
+        if ok and files:
+            try:
+                os.startfile(str(files[0].parent))
+            except Exception:  # noqa: BLE001
+                pass
+        self._refresh_hw()
+
     def _fill_skin_rows(self) -> None:
         lay = self._skin_rows
         while lay.count():
@@ -5265,6 +5304,28 @@ class SettingsDialog(QtWidgets.QDialog):
         lay.addLayout(store_row)
 
         self._refresh_storage()
+
+        # ---------- 性能记录 ----------
+        lay.addWidget(self._group("性能记录（要不要留最近半小时的走势）"))
+        self.chk_hwrec = QtWidgets.QCheckBox("记录 CPU / 内存 / 显卡 / 温度的走势")
+        self.chk_hwrec.setChecked(bool(getattr(self.cfg, "hw_record", False)))
+        self.chk_hwrec.setToolTip("开着才记：数据只在内存里留最近 30 分钟，不写盘、不上传；关掉立刻清空")
+        self.chk_hwrec.toggled.connect(self._on_hwrec)
+        lay.addWidget(self.chk_hwrec)
+
+        hw_row = QtWidgets.QHBoxLayout()
+        hw_row.setSpacing(8)
+        self.btn_hw_export = QtWidgets.QPushButton("导出报告")
+        self.btn_hw_export.setObjectName("Ghost")
+        self.btn_hw_export.setToolTip("生成一份 md + 一张曲线图，放在「素材 · 报告」里")
+        self.btn_hw_export.clicked.connect(self._export_hw)
+        hw_row.addWidget(self.btn_hw_export)
+        self.hw_info = QtWidgets.QLabel("")
+        self.hw_info.setObjectName("Small")
+        hw_row.addWidget(self.hw_info, 1)
+        hw_row.addStretch(1)
+        lay.addLayout(hw_row)
+        self._refresh_hw()
 
         # ---------- 游戏模式偏好 ----------
         lay.addWidget(self._group("游戏模式偏好（开模式时套用 · 关模式时放回）"))
@@ -12336,6 +12397,10 @@ class MainWindow(QtWidgets.QWidget):
         self.sysmon.updated.connect(self._on_sysmon)
         self.sysmon.start()
 
+        # 性能走势记录（默认关；开了才在内存里留最近半小时，导出报告时用）
+        self.hwrec = hwreport.Recorder(step=2.5)
+        self.hwrec.on = bool(getattr(self.cfg, "hw_record", False))
+
 
         # 接收"双击程序图标"发来的命令
         self.cmd_timer = QTimer(self)
@@ -14041,6 +14106,12 @@ class MainWindow(QtWidgets.QWidget):
     def _on_sysmon(self, data: dict) -> None:
         # 手机页面读同一份缓存，别各自去调 snapshot —— 会把采样基线冲掉，CPU 一直是 0
         self.sysmon_last = dict(data)
+        try:
+            rec = getattr(self, "hwrec", None)
+            if rec is not None and rec.on:
+                rec.feed(data)
+        except Exception:  # noqa: BLE001
+            pass
 
         def put(key: str, text: str, percent) -> None:
             item = self.stat_widgets.get(key)
