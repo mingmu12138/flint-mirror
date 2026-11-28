@@ -223,6 +223,68 @@ def connect_wifi(ip: str) -> tuple[bool, str]:
     return False, (text or "").strip()[:80] or "无线连接失败"
 
 
+def mdns_services() -> list[tuple[str, str, str]]:
+    """扫局域网里的 adb 服务：[(名字, 类型, 地址)]。
+
+    安卓 11 之后的「无线调试」会广播两种服务：
+      _adb-tls-pairing._tcp   —— 只在你打开「使用配对码配对设备」那个弹窗时才有
+      _adb-tls-connect._tcp   —— 配对成功后用来连的地址
+    """
+    rc, text = run_adb("mdns", "services", timeout=12)
+    out = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith("list of"):
+            continue
+        bits = line.split()
+        if len(bits) >= 3 and "_adb" in bits[1]:
+            out.append((bits[0], bits[1], bits[2]))
+    return out
+
+
+def wifi_pair_found() -> tuple[str, str]:
+    """(配对地址, 连接地址)；没开配对弹窗时配对地址是空的。"""
+    pair = conn = ""
+    for _name, typ, addr in mdns_services():
+        if "_adb-tls-pairing._tcp" in typ and not pair:
+            pair = addr
+        elif "_adb-tls-connect._tcp" in typ and not conn:
+            conn = addr
+    return pair, conn
+
+
+def pair_wifi(code: str) -> tuple[bool, str]:
+    """用手机上那 6 位配对码连无线。
+
+    手机上必须先把「开发者选项 → 无线调试 → 使用配对码配对设备」点开，
+    那个弹窗开着的时候配对服务才会广播出来；关掉就找不到。
+    """
+    code = (code or "").strip().replace(" ", "")
+    if not code.isdigit() or len(code) != 6:
+        return False, "配对码是手机上显示的那 6 位数字"
+    pair_addr, conn_addr = wifi_pair_found()
+    if not pair_addr:
+        return False, ("没发现配对服务 —— 先在手机上「开发者选项 → 无线调试 → 使用配对码配对设备」，"
+                       "把那个弹窗开着别关，再点一次")
+    rc, text = run_adb("pair", pair_addr, code, timeout=30)
+    low = (text or "").lower()
+    if "successfully paired" not in low:
+        if "wrong" in low or "failed" in low or "para" in low:
+            return False, "配对码不对或者已经过期 —— 手机上那个弹窗重开一个，用新码"
+        return False, "配对没成：" + (" ".join((text or "").split())[:90] or "手机没响应")
+    if not conn_addr:
+        for _n, typ, addr in mdns_services():
+            if "_adb-tls-connect._tcp" in typ:
+                conn_addr = addr
+                break
+    if not conn_addr:
+        return False, "配上了，但没找到连接端口 —— 把手机「无线调试」关一下再打开，重试"
+    rc, text = run_adb("connect", conn_addr, timeout=15)
+    if "connected to" in (text or "").lower():
+        return True, "无线连上了：" + conn_addr + "（之后直接选它投屏，不用再接线）"
+    return False, "配上了但连不上 —— 手机「无线调试」关一下再开，重试一次"
+
+
 def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str = "",
           virtual: bool = False, no_audio: bool = False) -> QtCore.QProcess:
     """拉起 scrcpy 窗口。返回 QProcess，调用方自己接 finished 信号。
@@ -290,8 +352,13 @@ def explain(text: str) -> str:
         return "窗口关掉了"
     if "unauthorized" in low:
         return "手机没允许调试 —— 在手机屏幕上点「允许」"
-    if "no devices" in low or "not found" in low:
-        return "没找到手机 —— 检查线是不是只能充电的那种"
+    if "disconnected" in low or "stream disabled" in low or "connection error" in low:
+        return ("手机中途掉线了 —— 这是数据线 / USB 口接触的问题，不是软件：换一根能传文件的线、"
+                "插机箱后面板的口；要是线一直不稳，就用「无线连接」那条")
+    if ("could not find any adb device" in low or "no devices" in low
+            or "not found" in low):
+        return ("没找到手机 —— 检查线是不是只能充电的那种；如果刚刚还在投屏，那就是线掉了，"
+                "换线或者改用无线连接")
     if "access denied" in low or "permission" in low:
         return "系统拦了 adb 的 USB 访问 —— 换一个 USB 口，别用前置面板的那些"
     if "server version" in low or "5037" in low:

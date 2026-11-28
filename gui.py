@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.2"
+APP_VERSION = "v1.12.3"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -6212,6 +6212,15 @@ class ScrcpyDialog(QtWidgets.QDialog):
         drag_hint.setObjectName("Hint")
         qrow.addWidget(drag_hint)
         qv.addLayout(qrow)
+
+        # 虚拟屏和录屏一起勾时，录到的其实是手机主屏（scrcpy 的 --record 绑的是主显示）
+        self.combo_hint = QtWidgets.QLabel("")
+        self.combo_hint.setObjectName("Hint")
+        self.combo_hint.setWordWrap(True)
+        self.combo_hint.setVisible(False)
+        qv.addWidget(self.combo_hint)
+        self.chk_record.toggled.connect(self._sync_combo_hint)
+        self.chk_virtual.toggled.connect(self._sync_combo_hint)
         lay.addWidget(q_card)
 
         # ---- 无线（默认折起） ----
@@ -6236,8 +6245,25 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.wifi_btn.clicked.connect(self._wifi)
         arow.addWidget(self.wifi_btn)
         av.addLayout(arow)
+
+        # 安卓 11 以后的正路：配对码。手机上那个弹窗开着，燧镜自己去 mDNS 找端口
+        prow = QtWidgets.QHBoxLayout()
+        prow.setSpacing(8)
+        self.code_edit = QtWidgets.QLineEdit()
+        self.code_edit.setPlaceholderText("配对码：手机上那 6 位数字")
+        self.code_edit.setMaxLength(6)
+        prow.addWidget(self.code_edit, 1)
+        self.pair_btn = QtWidgets.QPushButton("用配对码连")
+        self.pair_btn.setObjectName("Mini")
+        self.pair_btn.clicked.connect(self._pair)
+        prow.addWidget(self.pair_btn)
+        av.addLayout(prow)
+
         self.ip_tip = QtWidgets.QLabel(
-            "第一次切无线得插着线点一次（燧镜会替你把手机切到无线模式），之后拔线也能投。"
+            "两种连法任选一种。\n"
+            "① 配对码（安卓 11 以后最省事）：手机「开发者选项 → 无线调试 → 使用配对码配对设备」，"
+            "把弹窗里那 6 位数字填到上面，弹窗别关，点「用配对码连」。\n"
+            "② 老办法：第一次插着线点「无线连上」（燧镜替你把手机切成无线模式），之后拔线也能投；"
             "手机 IP 在「设置 → WiFi → 当前网络」里看。"
         )
         self.ip_tip.setObjectName("Small")
@@ -6302,6 +6328,16 @@ class ScrcpyDialog(QtWidgets.QDialog):
         elif snap["state"] == "ready":
             self.desc.setText("点一下就开始；投屏窗口自己关掉就断开，不留后台")
 
+    def _sync_combo_hint(self) -> None:
+        """两个档位一起勾时把话说清楚，免得用户以为录错了。"""
+        try:
+            both = self.chk_virtual.isChecked() and self.chk_record.isChecked()
+            if both:
+                self.combo_hint.setText("虚拟屏 + 录屏：录下来的是手机主屏，不是虚拟屏里的画面")
+            self.combo_hint.setVisible(both)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _guess_ip(self) -> None:
         """从手机互联那边借地址：扫过码/输过配对码的手机，IP 本来就已经记着了。"""
         ip = ""
@@ -6339,6 +6375,29 @@ class ScrcpyDialog(QtWidgets.QDialog):
             self.wifi_btn.setEnabled(True)
             self.wifi_btn.setText("无线连上")
         self.win.toast(msg)
+        self.refresh()
+
+    def _pair(self) -> None:
+        """配对码连无线：手机上那个弹窗得开着，端口靠 mDNS 自己找，不用抄 IP。"""
+        code = self.code_edit.text().strip()
+        if not code:
+            self.win.toast("先填手机上显示的 6 位配对码")
+            return
+        pair_addr, _conn = scrcpy_tool.wifi_pair_found()
+        if not pair_addr:
+            self.win.toast("没发现配对服务：手机上先打开「无线调试 → 使用配对码配对设备」，弹窗别关，再点一次")
+            return
+        self.pair_btn.setEnabled(False)
+        self.pair_btn.setText("配对中…")
+        QtWidgets.QApplication.processEvents()
+        try:
+            ok, msg = scrcpy_tool.pair_wifi(code)
+        finally:
+            self.pair_btn.setEnabled(True)
+            self.pair_btn.setText("用配对码连")
+        self.win.toast(msg)
+        if ok:
+            self.code_edit.clear()
         self.refresh()
 
     # ---------------------------------------------------------------- 启动
