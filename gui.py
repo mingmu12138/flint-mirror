@@ -1649,6 +1649,9 @@ CHANGELOG = [
             "现在投摄像头前自动帮手机亮屏；手电筒随窗口开关，关窗口自动灭",
             "说明：摄像头走 Camera2 原始流，拿不到厂商算法（美颜 / 夜景多帧 / HDR / 人像虚化只在手机相机 App 管线里），"
             "所以面板上不放这些开关，只写一句提示",
+            "修：老机型不再是点了才报错 —— 面板会先读手机的 Android 版本，低于 12（SDK 31）就把「手机摄像头」「虚拟屏」"
+            "置灰并写明「你的手机是 Android 11，这两个要 Android 12 以上」；读不到版本按未知处理、不拦；"
+            "普通投屏在任何版本都能照常用。这两个功能启动失败时的报错也改成了能照着做的话",
         ],
     ),
     (
@@ -6518,6 +6521,12 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self._dev_key: tuple = ()
         self._recon_done = None
         self._recon_worker = None
+        # Android 版本守卫：摄像头 / 虚拟屏都是 Android 12+ 才有的 scrcpy 能力，
+        # 老机型勾了只会弹出 "requires Android 12"，不如提前置灰说清楚。
+        self._sdk_serial = ""
+        self._sdk_val = -1        # -1 = 还没探；0 = 探了但读不到；>0 = SDK 号
+        self._sdk_probing = False
+        self._sdk_pending = None  # (serial, sdk) 由后台线程写、主线程取
         self.refresh()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
@@ -6537,6 +6546,7 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.st_title.setText(snap["title"])
         self.st_detail.setText(snap["detail"])
         self._sync_devices(snap.get("serials") or [])
+        self._sync_sdk_guard()
         self.guide.setVisible(snap["state"] != "ready")
         self.start_btn.setEnabled(snap["state"] != "no-tool")
         running = False
@@ -6549,6 +6559,77 @@ class ScrcpyDialog(QtWidgets.QDialog):
             self.desc.setText("投屏在跑：收面板不断投屏，要断就点「结束投屏」")
         elif snap["state"] == "ready":
             self.desc.setText("点一下就开始；投屏窗口自己关掉就断开，不留后台")
+
+    def _sync_sdk_guard(self) -> None:
+        """后台探一次当前这台设备的 Android 版本，SDK < 31 就把「手机摄像头」「虚拟屏」置灰。
+
+        scrcpy 的摄像头投屏和虚拟屏都要 Android 12 以上；别的用户手里的老机器勾了
+        只会被 scrcpy 弹一句 "requires Android 12"，与其让人猜，不如提前说清楚。
+        读不到版本时（0）按「未知」处理、不拦 —— 不能因为一条命令没返回就把功能封死。
+        """
+        serial = ""
+        try:
+            serial = str(self.dev_combo.currentData() or "")
+        except Exception:  # noqa: BLE001
+            serial = ""
+        if not serial:
+            return
+        pending = self._sdk_pending
+        if pending:
+            self._sdk_pending = None
+            if pending[0] == serial:
+                self._sdk_val = int(pending[1] or 0)
+                self._apply_sdk_guard()
+        if serial != self._sdk_serial and not self._sdk_probing:
+            self._sdk_probing = True
+            self._sdk_serial = serial
+            self._sdk_val = -1          # 换了设备，先回到「还没结论」，别留着上一台的
+            threading.Thread(target=self._probe_sdk, args=(serial,), daemon=True).start()
+
+    def _probe_sdk(self, serial: str) -> None:
+        """线程里只查、只写变量，不碰任何控件。"""
+        val = 0
+        try:
+            val = scrcpy_tool.android_sdk(serial)
+        except Exception:  # noqa: BLE001
+            val = 0
+        self._sdk_probing = False
+        self._sdk_pending = (serial, val)
+
+    def _apply_sdk_guard(self) -> None:
+        sdk = int(getattr(self, "_sdk_val", 0) or 0)
+        too_old = sdk > 0 and sdk < 31
+        cam = False
+        try:
+            cam = self.chk_camera.isChecked()
+        except Exception:  # noqa: BLE001
+            cam = False
+        if too_old:
+            ver = scrcpy_tool.android_ver_name(sdk)
+            tip = "你的手机是 Android %s，摄像头投屏和虚拟屏要 Android 12 以上才支持" % ver
+            self.chk_camera.setEnabled(False)
+            self.chk_camera.setToolTip(tip)
+            self.chk_virtual.setEnabled(False)
+            self.chk_virtual.setToolTip(tip)
+            if cam:
+                self.chk_camera.setChecked(False)
+            if self.chk_virtual.isChecked():
+                self.chk_virtual.setChecked(False)
+            self.cam_row.setVisible(False)
+            self.virt_row.setVisible(False)
+            return
+        self.chk_camera.setEnabled(True)
+        self.chk_camera.setToolTip(
+            "把手机当电脑摄像头用（走 Camera2 原始流）：\n"
+            "・能选前后摄、分辨率、帧率、变焦、手电筒\n"
+            "・拿不到厂商算法 —— 美颜 / 夜景 / HDR 只在相机 App 里跑，第三方接口给不到\n"
+            "・需要 Android 12 以上"
+        )
+        self.chk_virtual.setEnabled(not cam)
+        self.chk_virtual.setToolTip(
+            "摄像头模式下不能开虚拟屏（scrcpy 的摄像头模式不绑显示）" if cam
+            else "单开一块虚拟屏跑 App，不动手机前台；需要 Android 12 以上"
+        )
 
     def _sync_combo_hint(self) -> None:
         """两个档位一起勾时把话说清楚，免得用户以为录错了。"""
@@ -6577,14 +6658,10 @@ class ScrcpyDialog(QtWidgets.QDialog):
         """摄像头和虚拟屏互斥：scrcpy 摄像头模式没有虚拟屏这个概念。"""
         try:
             self.cam_row.setVisible(bool(on))
-            self.chk_virtual.setEnabled(not on)
             if on and self.chk_virtual.isChecked():
                 self.chk_virtual.setChecked(False)
             self.virt_row.setVisible(self.chk_virtual.isChecked() and not on)
-            if on:
-                self.chk_virtual.setToolTip("摄像头模式下不能开虚拟屏（scrcpy 的摄像头模式不绑显示）")
-            else:
-                self.chk_virtual.setToolTip("单开一块虚拟屏跑 App，不动手机前台；老系统可能不支持，报错就直接不勾")
+            self._apply_sdk_guard()      # 版本守卫和「摄像头模式禁虚拟屏」都收在这里，别两处抢着设
             self._sync_combo_hint()
         except Exception:  # noqa: BLE001
             pass

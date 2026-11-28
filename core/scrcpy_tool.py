@@ -399,6 +399,29 @@ def build_args(serial: str = "", quality: str = "normal", fps: int = 0, record: 
     return [a for a in args if a]
 
 
+def android_sdk(serial: str = "") -> int:
+    """手机的 Android SDK 版本号（31 = Android 12）。
+
+    摄像头投屏和虚拟屏都是 scrcpy 5.x 的新能力，Android 12 以下直接不支持；
+    拿不到就返回 0（未知），调用方按「未知不拦」处理，别因为读不到就把功能封了。
+    """
+    try:
+        if serial:
+            rc, out = run_adb("-s", serial, "shell", "getprop", "ro.build.version.sdk", timeout=5.0)
+        else:
+            rc, out = run_adb("shell", "getprop", "ro.build.version.sdk", timeout=5.0)
+        txt = (out or "").strip()
+        return int(txt) if txt.isdigit() else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def android_ver_name(sdk: int) -> str:
+    """31 → "12"，给提示语用。"""
+    names = {30: "11", 31: "12", 32: "12L", 33: "13", 34: "14", 35: "15", 36: "16"}
+    return names.get(int(sdk or 0), str(sdk or "?"))
+
+
 def wake_screen(serial: str = "") -> bool:
     """点亮手机屏幕（KEYCODE_WAKEUP）。
 
@@ -481,6 +504,18 @@ def explain(text: str) -> str:
         return "窗口关掉了"
     if "unauthorized" in low:
         return "手机没允许调试 —— 在手机屏幕上点「允许」"
+    # 摄像头 / 虚拟屏是 scrcpy 5.x 的新能力，别的机器上最容易撞这几条
+    if "android 12" in low or "requires android" in low or "sdk" in low and "too low" in low:
+        return ("这台手机系统太老 —— 摄像头投屏和虚拟屏都要 Android 12 以上；"
+                "普通投屏（投屏幕）不受影响，照常能用")
+    if "camera" in low and ("not found" in low or "no camera" in low or "fail" in low
+                            or "could not" in low or "no such" in low):
+        return ("这颗镜头打不开 —— 手机是多摄的话换「前置 / 后置」再试，"
+                "外接摄像头就选「外接 / 其他」；USB 摄像头没插好也会报这个")
+    if "camera" in low and ("permission" in low or "denied" in low):
+        return "手机没给摄像头权限 —— 在手机「设置 → 应用」里给对应权限，或者先解锁屏幕再试"
+    if "start-app" in low or "start app" in low or ("app" in low and "not" in low and "found" in low):
+        return "虚拟屏要起的那个 App 在这台手机上不存在 —— 换回「设置」，或者把包名填对"
     if "disconnected" in low or "stream disabled" in low or "connection error" in low:
         return ("手机中途掉线了 —— 这是数据线 / USB 口接触的问题，不是软件：换一根能传文件的线、"
                 "插机箱后面板的口；要是线一直不稳，就用「无线连接」那条")
