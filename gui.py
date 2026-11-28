@@ -14102,7 +14102,7 @@ class MainWindow(QtWidgets.QWidget):
         return p
 
     def stop_cast(self, quiet: bool = False) -> bool:
-        """关投屏：先 terminate，1.6 秒还没退就 kill。全程不等，界面不卡。"""
+        """关投屏：先让它「自己关窗」收尾（录屏才能写完整），3 秒还没退才强杀。"""
         p = getattr(self, "cast_proc", None)
         if p is None:
             return False
@@ -14111,12 +14111,19 @@ class MainWindow(QtWidgets.QWidget):
                 self.cast_proc = None
                 self._refresh_cast_tile()
                 return False
-            p.terminate()
+            pid = 0
+            try:
+                pid = int(p.processId())
+            except Exception:  # noqa: BLE001
+                pid = 0
+            gentle = scrcpy_tool.graceful_close(pid) if pid else False
+            if not gentle:
+                p.terminate()
         except Exception:  # noqa: BLE001
             self.cast_proc = None
             self._refresh_cast_tile()
             return False
-        QTimer.singleShot(1600, self._cast_kill_if_alive)
+        QTimer.singleShot(6000, self._cast_kill_if_alive)
         if not quiet:
             self.toast("正在结束投屏…")
         return True
@@ -14165,14 +14172,22 @@ class MainWindow(QtWidgets.QWidget):
                 self.cast_dialog = None
 
     def _cast_shutdown(self) -> None:
-        """退出前真把投屏收掉，且最多等 0.8 秒，绝不拖住关闭流程。"""
+        """退出前真把投屏收掉：先关窗让它收尾，最多等 2.5 秒，绝不拖住关闭流程。"""
         p = getattr(self, "cast_proc", None)
         self.cast_proc = None
         if p is None:
             return
         try:
-            p.terminate()
-            if not p.waitForFinished(400):
+            pid = 0
+            try:
+                pid = int(p.processId())
+            except Exception:  # noqa: BLE001
+                pid = 0
+            if pid:
+                scrcpy_tool.graceful_close(pid)
+            else:
+                p.terminate()
+            if not p.waitForFinished(2500):
                 p.kill()
                 p.waitForFinished(400)
         except Exception:  # noqa: BLE001

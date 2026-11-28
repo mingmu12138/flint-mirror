@@ -260,6 +260,29 @@ def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str =
     return proc
 
 
+def graceful_close(pid: int) -> bool:
+    """发「关窗口」而不是强杀。
+
+    Windows 上 QProcess.terminate() 是 TerminateProcess，等于直接砍掉进程；
+    scrcpy 正在录 mp4 时，砍掉就没人写文件尾，录下来的是个打不开的坏文件。
+    taskkill 不带 /F 会先投一个 WM_CLOSE，scrcpy 收到后正常退出并收尾。
+    """
+    if not pid:
+        return False
+    try:
+        if os.name == "nt":
+            p = subprocess.run(
+                ["taskkill", "/PID", str(int(pid))],
+                capture_output=True, timeout=8,
+                startupinfo=_hidden(), creationflags=CREATE_NO_WINDOW,
+            )
+            return p.returncode == 0
+        p = subprocess.run(["kill", "-TERM", str(int(pid))], capture_output=True, timeout=8)
+        return p.returncode == 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def explain(text: str) -> str:
     """把 adb / scrcpy 的报错翻成能照着做的话。"""
     low = (text or "").lower()
