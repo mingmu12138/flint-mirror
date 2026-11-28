@@ -24,6 +24,16 @@ QUALITY = {
     "normal": ("标准", ["-m", "1600", "-b", "4M"]),
     "hd": ("高清", ["-m", "1920", "-b", "8M"]),
 }
+# 虚拟屏默认起这个 App。scrcpy 不指定时起系统桌面，而小米/HyperOS 的桌面在虚拟屏上
+# 只有一块纯白（实测），换成「设置」就正常显示，所以兜这个默认。
+VIRTUAL_DEFAULT_APP = "com.android.settings"
+# 虚拟屏尺寸：留空 = 跟主屏一样大
+VIRTUAL_SIZES = [
+    ("跟手机屏幕一样", ""),
+    ("1280 × 720", "1280x720"),
+    ("1600 × 900", "1600x900"),
+    ("1920 × 1080", "1920x1080"),
+]
 
 
 def _roots():
@@ -344,25 +354,41 @@ def pair_wifi(code: str) -> tuple[bool, str, str]:
     return False, "配上了但连不上 —— 手机「无线调试」关一下再开，重试一次", ""
 
 
-def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str = "",
-          virtual: bool = False, no_audio: bool = False) -> QtCore.QProcess:
-    """拉起 scrcpy 窗口。返回 QProcess，调用方自己接 finished 信号。
+def build_args(serial: str = "", quality: str = "normal", fps: int = 0, record: str = "",
+               virtual: bool = False, no_audio: bool = False,
+               virtual_app: "str | None" = None, virtual_size: str = "",
+               camera: bool = False, camera_facing: str = "", camera_id: str = "",
+               camera_torch: bool = False) -> list:
+    """把参数拼成列表（纯函数，方便自检；start() 只负责拉起进程）。"""
+    args = ["--window-title=燧镜投屏", "--keyboard=uhid", "--mouse=sdk"]
 
-    可选的高级档（scrcpy 5.x 原生支持，不是我们造的功能）：
-      fps       —— 帧率上限，0 = 不限制
-      record    —— 录屏到 mp4（scrcpy 边投边录，关窗口就收尾成文件）
-      virtual   —— 开一块"虚拟屏"，应用跑在里面，不动手机前台
-      no_audio  —— 不把手机声音转到电脑（用手机音频接收那套时勾它，免得两边抢）
-    拖拽互传是 scrcpy 自带的：把文件拖进投屏窗口，它就推到手机 Download 里。
-    """
-    args = ["--turn-screen-off", "--stay-awake", "--window-title=燧镜投屏",
-            "--keyboard=uhid", "--mouse=sdk"]
+    if camera:
+        # 摄像头模式：不碰手机屏幕，也不要手机的声音（那边根本没有音频流）
+        args.append("--video-source=camera")
+        if camera_id:
+            args.append("--camera-id=" + str(camera_id))
+        elif camera_facing:
+            args.append("--camera-facing=" + str(camera_facing))
+        if camera_torch:
+            args.append("--camera-torch")
+        args.append("--no-audio")
+    else:
+        args += ["--turn-screen-off", "--stay-awake"]
+        if virtual:
+            nd = "--new-display"
+            if virtual_size:
+                nd += "=" + str(virtual_size)
+            args.append(nd)
+            # 不指定 App 时 scrcpy 会起系统桌面；HyperOS / MIUI 的桌面在虚拟屏上渲染成纯白，
+            # 实测换成「设置」就正常，所以默认兜「设置」；显式给空串表示就要桌面
+            app = VIRTUAL_DEFAULT_APP if virtual_app is None else virtual_app
+            if app:
+                args.append("--start-app=" + str(app))
+        if no_audio:
+            args.append("--no-audio")
+
     if fps:
         args.append("--max-fps=%d" % int(fps))
-    if virtual:
-        args.append("--new-display")
-    if no_audio:
-        args.append("--no-audio")
     if record:
         args.append("--record=" + str(record))
     q = QUALITY.get(quality)
@@ -370,6 +396,50 @@ def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str =
         args += q[1]
     if serial:
         args += ["-s", serial]
+    return [a for a in args if a]
+
+
+def wake_screen(serial: str = "") -> bool:
+    """点亮手机屏幕（KEYCODE_WAKEUP）。
+
+    实测坑：手机息屏时 scrcpy 的摄像头流会一直是黑帧（小米/Camera2 的省电策略），
+    屏幕一亮画面立刻出来。所以投摄像头之前先唤醒一下；失败就算了，不挡主流程。
+    """
+    rc = -1
+    try:
+        if serial:
+            rc, _ = run_adb("-s", serial, "shell", "input keyevent 224", timeout=4.0)
+        else:
+            rc, _ = run_adb("shell", "input keyevent 224", timeout=4.0)
+    except Exception:
+        rc = -1
+    return rc == 0
+
+
+def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str = "",
+          virtual: bool = False, no_audio: bool = False,
+          virtual_app: "str | None" = None, virtual_size: str = "",
+          camera: bool = False, camera_facing: str = "", camera_id: str = "",
+          camera_torch: bool = False) -> QtCore.QProcess:
+    """拉起 scrcpy 窗口。返回 QProcess，调用方自己接 finished 信号。
+
+    可选的高级档（scrcpy 5.x 原生支持，不是我们造的功能）：
+      fps       —— 帧率上限，0 = 不限制
+      record    —— 录屏到 mp4（scrcpy 边投边录，关窗口就收尾成文件）
+      virtual   —— 开一块"虚拟屏"，应用跑在里面，不动手机前台
+      virtual_app / virtual_size —— 虚拟屏里起哪个 App、分辨率多大
+      no_audio  —— 不把手机声音转到电脑（用手机音频接收那套时勾它，免得两边抢）
+      camera    —— 走手机摄像头（Camera2 原始流，没有厂商美颜/HDR 那些算法）
+      camera_facing / camera_id —— 用哪颗镜头（前置/后置，或直接给 camera id）
+    拖拽互传是 scrcpy 自带的：把文件拖进投屏窗口，它就推到手机 Download 里。
+    """
+    args = build_args(serial, quality, fps=fps, record=record, virtual=virtual, no_audio=no_audio,
+                      virtual_app=virtual_app, virtual_size=virtual_size, camera=camera,
+                      camera_facing=camera_facing, camera_id=camera_id, camera_torch=camera_torch)
+
+    if camera:
+        # 息屏状态下摄像头流是黑的（见 wake_screen 注释），先亮屏
+        wake_screen(serial)
 
     proc = QtCore.QProcess()
     env = QtCore.QProcessEnvironment()
@@ -377,7 +447,7 @@ def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str =
         env.insert(k, v)
     proc.setProcessEnvironment(env)
     proc.setWorkingDirectory(str(tool_dir()))
-    proc.start(str(exe_path()), [a for a in args if a])
+    proc.start(str(exe_path()), args)
     return proc
 
 

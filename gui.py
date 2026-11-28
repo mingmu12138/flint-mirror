@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.4"
+APP_VERSION = "v1.12.5"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -1635,6 +1635,22 @@ class AddRemoteDialog(QtWidgets.QDialog):
 # 关于
 # ---------------------------------------------------------------------------
 CHANGELOG = [
+    (
+        "2026-11-28 · v1.12.5",
+        [
+            "修：虚拟屏一开只有一块纯白 —— scrcpy 不指定 App 时默认起系统桌面，"
+            "而小米 / HyperOS 的桌面在虚拟屏上渲染不出来（13 Ultra + Android 16 实测复现）；"
+            "现在虚拟屏默认改成起「设置」，一开就有画面",
+            "新增：虚拟屏里开什么、屏幕多大能选 —— 预设「设置」和「系统桌面」，也能手输任意包名；"
+            "尺寸可选跟手机屏一样 / 1280×720 / 1600×900 / 1920×1080",
+            "新增：手机摄像头投屏 —— 勾「手机摄像头」把手机当电脑摄像头用，可选后置 / 前置 / 外接，能开手电筒；"
+            "摄像头模式不关手机屏、不转手机声音，跟投屏幕互斥",
+            "修：息屏时摄像头是黑的 —— 实测手机屏物理熄灭后摄像头流一直黑帧（Camera2 省电策略），"
+            "现在投摄像头前自动帮手机亮屏；手电筒随窗口开关，关窗口自动灭",
+            "说明：摄像头走 Camera2 原始流，拿不到厂商算法（美颜 / 夜景多帧 / HDR / 人像虚化只在手机相机 App 管线里），"
+            "所以面板上不放这些开关，只写一句提示",
+        ],
+    ),
     (
         "2026-11-28 · v1.12.4",
         [
@@ -6346,6 +6362,13 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.chk_virtual = QtWidgets.QCheckBox("虚拟屏")
         self.chk_virtual.setToolTip("单开一块虚拟屏跑 App，不动手机前台；老系统可能不支持，报错就直接不勾")
         qrow.addWidget(self.chk_virtual)
+        self.chk_camera = QtWidgets.QCheckBox("手机摄像头")
+        self.chk_camera.setToolTip(
+            "把手机当电脑摄像头用（走 Camera2 原始流）：\n"
+            "・能选前后摄、分辨率、帧率、变焦、手电筒\n"
+            "・拿不到厂商算法 —— 美颜 / 夜景 / HDR 只在相机 App 里跑，第三方接口给不到"
+        )
+        qrow.addWidget(self.chk_camera)
         self.chk_mute = QtWidgets.QCheckBox("不转手机声音")
         self.chk_mute.setToolTip("手机声音不往电脑送（在用「手机音频接收」那套时可以勾，免得两边抢）")
         qrow.addWidget(self.chk_mute)
@@ -6355,6 +6378,55 @@ class ScrcpyDialog(QtWidgets.QDialog):
         qrow.addWidget(drag_hint)
         qv.addLayout(qrow)
 
+        # ---- 虚拟屏里开什么（只有勾了虚拟屏才出现） ----
+        self.virt_row = QtWidgets.QWidget()
+        vr = QtWidgets.QHBoxLayout(self.virt_row)
+        vr.setContentsMargins(0, 2, 0, 0)
+        vr.setSpacing(6)
+        vr.addWidget(QtWidgets.QLabel("虚拟屏里开："))
+        self.virt_app = QtWidgets.QComboBox()
+        self.virt_app.setEditable(True)
+        self.virt_app.addItem("设置（推荐）", scrcpy_tool.VIRTUAL_DEFAULT_APP)
+        self.virt_app.addItem("系统桌面（小米/红米会只剩白屏）", "")
+        self.virt_app.setToolTip(
+            "默认起「设置」：scrcpy 不指定时起系统桌面，而小米 HyperOS 的桌面在虚拟屏上只有一块纯白。\n"
+            "也能直接手输包名（如 com.tencent.mobileqq）"
+        )
+        self.virt_app.setMinimumWidth(210)
+        vr.addWidget(self.virt_app)
+        vr.addSpacing(8)
+        vr.addWidget(QtWidgets.QLabel("屏幕大小："))
+        self.virt_size = QtWidgets.QComboBox()
+        for label, val in scrcpy_tool.VIRTUAL_SIZES:
+            self.virt_size.addItem(label, val)
+        self.virt_size.setToolTip("虚拟屏自己的分辨率，跟手机主屏无关；越大约占带宽")
+        vr.addWidget(self.virt_size)
+        vr.addStretch(1)
+        self.virt_row.setVisible(False)
+        qv.addWidget(self.virt_row)
+
+        # ---- 手机摄像头（勾了就不投屏幕，改投摄像头） ----
+        self.cam_row = QtWidgets.QWidget()
+        cr = QtWidgets.QHBoxLayout(self.cam_row)
+        cr.setContentsMargins(0, 2, 0, 0)
+        cr.setSpacing(6)
+        cr.addWidget(QtWidgets.QLabel("用哪颗镜头："))
+        self.cam_face = QtWidgets.QComboBox()
+        self.cam_face.addItem("后置（默认）", "back")
+        self.cam_face.addItem("前置", "front")
+        self.cam_face.addItem("外接 / 其他", "external")
+        self.cam_face.setToolTip("多摄机型里后置有超广角、长焦好几颗，scrcpy 默认只取主摄")
+        cr.addWidget(self.cam_face)
+        self.chk_torch = QtWidgets.QCheckBox("开手电筒")
+        self.chk_torch.setToolTip("摄像头模式独有的，照亮用；只在投摄像头期间亮，关窗口就灭")
+        cr.addWidget(self.chk_torch)
+        cr.addStretch(1)
+        cam_hint = QtWidgets.QLabel("原始画面，没有手机自带的美颜/夜景算法；会自动帮你点亮手机屏幕")
+        cam_hint.setObjectName("Hint")
+        cr.addWidget(cam_hint)
+        self.cam_row.setVisible(False)
+        qv.addWidget(self.cam_row)
+
         # 虚拟屏和录屏一起勾时，录到的其实是手机主屏（scrcpy 的 --record 绑的是主显示）
         self.combo_hint = QtWidgets.QLabel("")
         self.combo_hint.setObjectName("Hint")
@@ -6363,6 +6435,8 @@ class ScrcpyDialog(QtWidgets.QDialog):
         qv.addWidget(self.combo_hint)
         self.chk_record.toggled.connect(self._sync_combo_hint)
         self.chk_virtual.toggled.connect(self._sync_combo_hint)
+        self.chk_virtual.toggled.connect(self._on_virtual_toggled)
+        self.chk_camera.toggled.connect(self._on_camera_toggled)
         lay.addWidget(q_card)
 
         # ---- 无线（默认折起） ----
@@ -6479,12 +6553,53 @@ class ScrcpyDialog(QtWidgets.QDialog):
     def _sync_combo_hint(self) -> None:
         """两个档位一起勾时把话说清楚，免得用户以为录错了。"""
         try:
+            if self.chk_camera.isChecked():
+                notes = ["摄像头模式：投的是手机镜头画面，不是手机屏幕；手机屏幕该怎么用还怎么用"]
+                if self.chk_record.isChecked():
+                    notes.append("录下来的是摄像头画面")
+                self.combo_hint.setText("；".join(notes))
+                self.combo_hint.setVisible(True)
+                return
             both = self.chk_virtual.isChecked() and self.chk_record.isChecked()
             if both:
                 self.combo_hint.setText("虚拟屏 + 录屏：录下来的是手机主屏，不是虚拟屏里的画面")
             self.combo_hint.setVisible(both)
         except Exception:  # noqa: BLE001
             pass
+
+    def _on_virtual_toggled(self, on: bool) -> None:
+        try:
+            self.virt_row.setVisible(bool(on) and not self.chk_camera.isChecked())
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_camera_toggled(self, on: bool) -> None:
+        """摄像头和虚拟屏互斥：scrcpy 摄像头模式没有虚拟屏这个概念。"""
+        try:
+            self.cam_row.setVisible(bool(on))
+            self.chk_virtual.setEnabled(not on)
+            if on and self.chk_virtual.isChecked():
+                self.chk_virtual.setChecked(False)
+            self.virt_row.setVisible(self.chk_virtual.isChecked() and not on)
+            if on:
+                self.chk_virtual.setToolTip("摄像头模式下不能开虚拟屏（scrcpy 的摄像头模式不绑显示）")
+            else:
+                self.chk_virtual.setToolTip("单开一块虚拟屏跑 App，不动手机前台；老系统可能不支持，报错就直接不勾")
+            self._sync_combo_hint()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _virt_app_value(self) -> str:
+        """下拉选了预设就取包名，手输了别的就当包名用。"""
+        try:
+            txt = self.virt_app.currentText().strip()
+            for i in range(self.virt_app.count()):
+                if txt == self.virt_app.itemText(i):
+                    data = self.virt_app.itemData(i)
+                    return str(data or "")
+            return txt
+        except Exception:  # noqa: BLE001
+            return ""
 
     def _sync_devices(self, serials: list) -> None:
         """把在线设备同步进下拉框。没变化就不动，8 秒一刷不能把用户的选择打断。"""
@@ -6682,6 +6797,11 @@ class ScrcpyDialog(QtWidgets.QDialog):
             "record": self.chk_record.isChecked(),
             "virtual": self.chk_virtual.isChecked(),
             "no_audio": self.chk_mute.isChecked(),
+            "virtual_app": self._virt_app_value() if self.chk_virtual.isChecked() else None,
+            "virtual_size": str(self.virt_size.currentData() or ""),
+            "camera": self.chk_camera.isChecked(),
+            "camera_facing": str(self.cam_face.currentData() or "back"),
+            "camera_torch": self.chk_torch.isChecked(),
         }
         try:
             # 进程挂主窗口，面板关掉也不跟着死；这里只拿个引用
@@ -14495,7 +14615,12 @@ class MainWindow(QtWidgets.QWidget):
                               fps=int(opts.get("fps") or 0),
                               record=rec,
                               virtual=bool(opts.get("virtual")),
-                              no_audio=bool(opts.get("no_audio")))
+                              no_audio=bool(opts.get("no_audio")),
+                              virtual_app=opts.get("virtual_app"),
+                              virtual_size=str(opts.get("virtual_size") or ""),
+                              camera=bool(opts.get("camera")),
+                              camera_facing=str(opts.get("camera_facing") or "back"),
+                              camera_torch=bool(opts.get("camera_torch")))
         if rec:
             self.toast("投屏顺手录着，成品会放到：" + rec.split("\\")[-1])
         p.setParent(self)
