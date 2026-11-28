@@ -10,9 +10,11 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import time
+import zlib
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -99,6 +101,85 @@ def delete_macro(name: str) -> bool:
     except OSError:
         return False
     return False
+
+
+# ---------------------------------------------------------------- 分享码
+# 跟滤镜的 F1- 码一个思路：压成一段能复制粘贴的文字，对方粘进去就还原。
+# 宏是一串事件，比滤镜参数大得多，所以走「紧凑 json → zlib → base64url」。
+# 码里带一位校验，抄漏一个字符会直接判失败，不会套一条半截宏上去。
+
+CODE_PREFIX = "M1"
+_B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+_MAX_CODE = 200000          # 超过这个长度就不认（防手滑粘进一整篇文档）
+_MAX_RAW = 8 * 1024 * 1024  # 解压后上限，防压缩炸弹
+
+
+def _check(body: str) -> str:
+    return _B36[sum(body.encode("ascii", "ignore")) % 36]
+
+
+def _clean(code: str) -> str:
+    return "".join(ch for ch in str(code or "") if not ch.isspace())
+
+
+def code_looks(code: str) -> bool:
+    """粗看像不像一个宏分享码（给"粘了就直接导入"用）。"""
+    text = _clean(code)
+    return text.startswith(CODE_PREFIX + ".") and text.count(".") >= 2
+
+
+def code_encode(events: List[Event]) -> str:
+    """事件列表 → 分享码。空的或全是坏事件就返回空串。"""
+    packed = []
+    for ev in events or []:
+        try:
+            t, kind, vk, down = int(ev[0]), ev[1], int(ev[2]), bool(ev[3])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if t < 0 or vk < 0 or vk > 255:
+            continue
+        packed.append([t, 1 if kind == "key" else 2, vk, 1 if down else 0])
+    if not packed:
+        return ""
+    raw = json.dumps(packed, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    body = base64.urlsafe_b64encode(zlib.compress(raw, 9)).decode("ascii").rstrip("=")
+    return CODE_PREFIX + "." + body + "." + _check(body)
+
+
+def code_decode(code: str) -> Optional[List[Event]]:
+    """分享码 → 事件列表。认不出来一律 None，不去猜。"""
+    text = _clean(code)
+    if not text or len(text) > _MAX_CODE or not text.startswith(CODE_PREFIX + "."):
+        return None
+    parts = text.split(".")
+    if len(parts) != 3:
+        return None
+    _p, body, check = parts
+    if not body or _check(body) != check:
+        return None
+    try:
+        comp = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))
+        d = zlib.decompressobj()
+        raw = d.decompress(comp, _MAX_RAW + 1)
+        if len(raw) > _MAX_RAW or d.unconsumed_tail:
+            return None
+        packed = json.loads(raw.decode("utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(packed, list) or not packed:
+        return None
+    events: List[Event] = []
+    for item in packed:
+        if not isinstance(item, list) or len(item) != 4:
+            return None
+        try:
+            t, kind, vk, down = int(item[0]), int(item[1]), int(item[2]), int(item[3])
+        except (TypeError, ValueError):
+            return None
+        if t < 0 or vk < 0 or vk > 255 or kind not in (1, 2) or down not in (0, 1):
+            return None
+        events.append([t, "key" if kind == 1 else "mouse", vk, bool(down)])
+    return events
 
 
 class Recorder:

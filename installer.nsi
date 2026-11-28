@@ -7,15 +7,15 @@ SetCompressorDictSize 64
 !include "FileFunc.nsh"
 
 !define APP_NAME "燧镜"
-!define APP_VER "1.12.3"
-!define APP_VER4 "1.12.3.0"
+!define APP_VER "1.12.4"
+!define APP_VER4 "1.12.4.0"
 !define APP_EXE "燧镜.exe"
 !define PUBLISHER "布鲁托是小馋猫"
 !define SRC_DIR "分发版\燧镜"
 !define REG_UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\燧镜"
 
 Name "${APP_NAME}"
-OutFile "燧镜_v1.12.3_安装包.exe"
+OutFile "燧镜_v1.12.4_安装包.exe"
 InstallDir "$LOCALAPPDATA\Programs\燧镜"
 InstallDirRegKey HKCU "Software\燧镜" "InstallDir"
 RequestExecutionLevel user
@@ -23,7 +23,7 @@ RequestExecutionLevel user
 Icon "assets\icon.ico"
 UninstallIcon "assets\icon.ico"
 
-VIProductVersion "1.12.3.0"
+VIProductVersion "1.12.4.0"
 VIAddVersionKey "ProductName" "燧镜"
 VIAddVersionKey "CompanyName" "${PUBLISHER}"
 VIAddVersionKey "FileDescription" "燧镜 安装程序"

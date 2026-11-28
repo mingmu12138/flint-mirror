@@ -635,6 +635,10 @@ class Config:
         self.audio_tray_icon: bool = True
         # 音乐播放器音量（0.0 ~ 1.0）：上次拖到哪，下次开程序还是哪
         self.music_volume: float = 0.7
+        # 手机投屏：上次投的那台（serial 或无线地址），以及无线那台的 mDNS 名字
+        # （无线调试的端口每次重开都会变，只有 mDNS 名字是稳定的）
+        self.cast_serial: str = ""
+        self.cast_wifi: str = ""
         # 游戏模式偏好：记住用户想用的电源计划 / 分辨率，下次开模式直接套这一套
         # gm_plan 空 = 走默认高性能；gm_res 空 = 不动分辨率
         self.gm_plan: str = ""
@@ -715,6 +719,8 @@ class Config:
         self.lan_id = str(raw.get("lan_id") or "")[:40]
         self.clip_auto = bool(raw.get("clip_auto", False))
         self.recv_dir = str(raw.get("recv_dir") or "")[:400]
+        self.cast_serial = str(raw.get("cast_serial") or "")[:64]
+        self.cast_wifi = str(raw.get("cast_wifi") or "")[:64]
 
         self.hotkey_enabled = bool(raw.get("hotkey_enabled", True))
         raw_on = raw.get("hotkey_on") or {}
@@ -1046,6 +1052,8 @@ class Config:
             "lan_id": self.lan_id,
             "clip_auto": self.clip_auto,
             "recv_dir": self.recv_dir,
+            "cast_serial": getattr(self, "cast_serial", ""),
+            "cast_wifi": getattr(self, "cast_wifi", ""),
             "hotkey_enabled": self.hotkey_enabled,
             "hotkey_on": dict(self.hotkey_on),
             "replay_max_gb": self.replay_max_gb,

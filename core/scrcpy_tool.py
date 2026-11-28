@@ -253,36 +253,95 @@ def wifi_pair_found() -> tuple[str, str]:
     return pair, conn
 
 
-def pair_wifi(code: str) -> tuple[bool, str]:
-    """用手机上那 6 位配对码连无线。
+def wifi_tags() -> list[tuple[str, str]]:
+    """当前广播出来的无线设备：[(mDNS 名字, IP:端口)]。
+
+    名字形如 `adb-4a08dccd-dTD7jM`，里面带着设备序列号；无线调试的端口
+    每次关开都会变，只有这个名字是稳定的，所以拿它当"这台手机"的标识。
+    """
+    out = []
+    for name, typ, addr in mdns_services():
+        if "_adb-tls-connect._tcp" in typ:
+            out.append((name, addr))
+    return out
+
+
+def tag_for_addr(addr: str) -> str:
+    """IP:端口 → mDNS 名字（按同一 IP 认，一台机器上不会有两台手机同 IP）。"""
+    ip = (addr or "").split(":")[0]
+    if not ip:
+        return ""
+    for name, a in wifi_tags():
+        if a.split(":")[0] == ip:
+            return name
+    return ""
+
+
+def reconnect_wifi(tag: str) -> tuple[bool, str]:
+    """按 mDNS 名字把上次那台无线手机接回来。
+
+    先看是不是已经在线；不在就扫一遍局域网，找名字对得上的当前端口再连。
+    手机把「无线调试」关掉之后就不再广播，这种情况只能让用户去打开一下——
+    配对信息在手机端存着，重新打开后不用再配一次。
+    """
+    tag = (tag or "").strip()
+    if not tag:
+        return False, ""
+    for s, st in devices():
+        if st == "device" and (s == tag or s.startswith(tag) or tag.startswith(s)):
+            return True, ""
+    found = wifi_tags()
+    cur = ""
+    for name, addr in found:
+        if name == tag or name.startswith(tag) or tag.startswith(name):
+            cur = addr
+            break
+    if not cur and len(found) == 1:
+        cur = found[0][1]
+    if not cur:
+        return False, ("手机上的「无线调试」好像被关掉了（关掉后它就不广播了）——"
+                       "去开发者选项重新打开，回来点「刷新」，不用再配对一次")
+    rc, text = run_adb("connect", cur, timeout=12)
+    if "connected to" in (text or "").lower():
+        return True, ""
+    return False, "无线地址找到了但连不上，点「刷新」再试一次"
+
+
+def model_name(serial: str) -> str:
+    """给下拉框用的型号名（带缓存，重复调不会一直跑 adb）。"""
+    return _model(serial)
+
+
+def pair_wifi(code: str) -> tuple[bool, str, str]:
+    """用手机上那 6 位配对码连无线，返回 (成功, 提示, mDNS 名字)。
 
     手机上必须先把「开发者选项 → 无线调试 → 使用配对码配对设备」点开，
     那个弹窗开着的时候配对服务才会广播出来；关掉就找不到。
     """
     code = (code or "").strip().replace(" ", "")
     if not code.isdigit() or len(code) != 6:
-        return False, "配对码是手机上显示的那 6 位数字"
+        return False, "配对码是手机上显示的那 6 位数字", ""
     pair_addr, conn_addr = wifi_pair_found()
     if not pair_addr:
         return False, ("没发现配对服务 —— 先在手机上「开发者选项 → 无线调试 → 使用配对码配对设备」，"
-                       "把那个弹窗开着别关，再点一次")
+                       "把那个弹窗开着别关，再点一次"), ""
     rc, text = run_adb("pair", pair_addr, code, timeout=30)
     low = (text or "").lower()
     if "successfully paired" not in low:
         if "wrong" in low or "failed" in low or "para" in low:
-            return False, "配对码不对或者已经过期 —— 手机上那个弹窗重开一个，用新码"
-        return False, "配对没成：" + (" ".join((text or "").split())[:90] or "手机没响应")
+            return False, "配对码不对或者已经过期 —— 手机上那个弹窗重开一个，用新码", ""
+        return False, "配对没成：" + (" ".join((text or "").split())[:90] or "手机没响应"), ""
     if not conn_addr:
         for _n, typ, addr in mdns_services():
             if "_adb-tls-connect._tcp" in typ:
                 conn_addr = addr
                 break
     if not conn_addr:
-        return False, "配上了，但没找到连接端口 —— 把手机「无线调试」关一下再打开，重试"
+        return False, "配上了，但没找到连接端口 —— 把手机「无线调试」关一下再打开，重试", ""
     rc, text = run_adb("connect", conn_addr, timeout=15)
     if "connected to" in (text or "").lower():
-        return True, "无线连上了：" + conn_addr + "（之后直接选它投屏，不用再接线）"
-    return False, "配上了但连不上 —— 手机「无线调试」关一下再开，重试一次"
+        return True, "无线连上了：" + conn_addr + "（之后直接选它投屏，不用再接线）", tag_for_addr(conn_addr)
+    return False, "配上了但连不上 —— 手机「无线调试」关一下再开，重试一次", ""
 
 
 def start(serial: str = "", quality: str = "normal", fps: int = 0, record: str = "",

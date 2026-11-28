@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.3"
+APP_VERSION = "v1.12.4"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -6136,6 +6136,25 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.st_detail.setObjectName("Small")
         self.st_detail.setWordWrap(True)
         v.addWidget(self.st_detail)
+
+        # 插着线又配了无线时会同时冒好几台（无线还会同时出现 IP 和 mDNS 名两行），
+        # 所以给一个明确的「投到哪台」，别让它自己猜第一台
+        drow = QtWidgets.QHBoxLayout()
+        drow.setSpacing(8)
+        dl = QtWidgets.QLabel("投到哪台")
+        dl.setObjectName("Small")
+        drow.addWidget(dl)
+        self.dev_combo = QtWidgets.QComboBox()
+        self.dev_combo.setObjectName("Mini")
+        drow.addWidget(self.dev_combo, 1)
+        v.addLayout(drow)
+
+        self.recon_note = QtWidgets.QLabel("")
+        self.recon_note.setObjectName("Hint")
+        self.recon_note.setWordWrap(True)
+        self.recon_note.setVisible(False)
+        v.addWidget(self.recon_note)
+
         lay.addWidget(card)
 
         # ---- 首次使用的引导（认到手机后自动收起） ----
@@ -6299,10 +6318,15 @@ class ScrcpyDialog(QtWidgets.QDialog):
         row.addWidget(close_btn)
         lay.addLayout(row)
 
+        self._dev_key: tuple = ()
+        self._recon_done = None
+        self._recon_worker = None
         self.refresh()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(8000)
+        # 打开面板时先把上次那台无线手机接回来（放到事件循环里，先让窗口画出来）
+        QTimer.singleShot(250, self._auto_reconnect)
 
     # ---------------------------------------------------------------- 状态
     def refresh(self) -> None:
@@ -6315,6 +6339,7 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self._last_state = snap["state"]
         self.st_title.setText(snap["title"])
         self.st_detail.setText(snap["detail"])
+        self._sync_devices(snap.get("serials") or [])
         self.guide.setVisible(snap["state"] != "ready")
         self.start_btn.setEnabled(snap["state"] != "no-tool")
         running = False
@@ -6337,6 +6362,112 @@ class ScrcpyDialog(QtWidgets.QDialog):
             self.combo_hint.setVisible(both)
         except Exception:  # noqa: BLE001
             pass
+
+    def _sync_devices(self, serials: list) -> None:
+        """把在线设备同步进下拉框。没变化就不动，8 秒一刷不能把用户的选择打断。"""
+        items = []
+        for s in serials:
+            kind = "无线" if ("." in s or ":" in s) else "USB"
+            name = scrcpy_tool.model_name(s) or ""
+            label = (name + "（" + kind + "）") if name else (s[:10] + "…（" + kind + "）")
+            items.append((s, label))
+        key = tuple(items)
+        if key == self._dev_key:
+            return
+        self._dev_key = key
+        want = ""
+        try:
+            want = str(getattr(self.win.cfg, "cast_serial", "") or "")
+        except Exception:  # noqa: BLE001
+            want = ""
+        cur = ""
+        try:
+            cur = str(self.dev_combo.currentData() or "")
+        except Exception:  # noqa: BLE001
+            cur = ""
+        self.dev_combo.blockSignals(True)
+        self.dev_combo.clear()
+        for s, label in items:
+            self.dev_combo.addItem(label, s)
+        self.dev_combo.blockSignals(False)
+        for pick in (want, cur):
+            if not pick:
+                continue
+            for i, (s, _l) in enumerate(items):
+                if s == pick or (pick and s.startswith(pick)):
+                    self.dev_combo.setCurrentIndex(i)
+                    break
+
+    def _remember(self, tag: str = "") -> None:
+        """把这次投的那台记进配置；无线的那台额外记 mDNS 名字（端口会变，名字不会）。"""
+        serial = ""
+        try:
+            serial = str(self.dev_combo.currentData() or "")
+        except Exception:  # noqa: BLE001
+            serial = ""
+        if not serial:
+            return
+        try:
+            self.win.cfg.cast_serial = serial
+            if tag:
+                self.win.cfg.cast_wifi = tag
+            elif ":" in serial or "_adb" in serial:
+                found = scrcpy_tool.tag_for_addr(serial)
+                if found:
+                    self.win.cfg.cast_wifi = found
+            self.win.cfg.save()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _auto_reconnect(self) -> None:
+        """打开面板时把上次那台无线手机接回来，不用用户每次重新配对。"""
+        tag = ""
+        try:
+            tag = str(getattr(self.win.cfg, "cast_wifi", "") or "").strip()
+        except Exception:  # noqa: BLE001
+            tag = ""
+        if not tag:
+            return
+        try:
+            for s, st in scrcpy_tool.devices():
+                if st == "device" and (s == tag or s.startswith(tag)):
+                    return
+        except Exception:  # noqa: BLE001
+            pass
+        self._recon_done = None
+        self.recon_note.setText("正在把上次那台无线手机接回来…")
+        self.recon_note.setVisible(True)
+        self._recon_worker = threading.Thread(target=self._recon_work, args=(tag,), daemon=True)
+        self._recon_worker.start()
+        try:
+            self._recon_timer.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        self._recon_timer = QTimer(self)
+        self._recon_timer.timeout.connect(self._recon_poll)
+        self._recon_timer.start(600)
+
+    def _recon_work(self, tag: str) -> None:
+        try:
+            ok, msg = scrcpy_tool.reconnect_wifi(tag)
+        except Exception as exc:  # noqa: BLE001
+            ok, msg = False, str(exc)[:80]
+        self._recon_done = (ok, msg)
+
+    def _recon_poll(self) -> None:
+        if self._recon_done is None:
+            return
+        try:
+            self._recon_timer.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        ok, msg = self._recon_done
+        self._recon_done = None
+        if ok:
+            self.recon_note.setVisible(False)
+            self.refresh()
+        else:
+            self.recon_note.setText(msg or "上次那台没连上，重新配对一次")
 
     def _guess_ip(self) -> None:
         """从手机互联那边借地址：扫过码/输过配对码的手机，IP 本来就已经记着了。"""
@@ -6391,13 +6522,14 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.pair_btn.setText("配对中…")
         QtWidgets.QApplication.processEvents()
         try:
-            ok, msg = scrcpy_tool.pair_wifi(code)
+            ok, msg, tag = scrcpy_tool.pair_wifi(code)
         finally:
             self.pair_btn.setEnabled(True)
             self.pair_btn.setText("用配对码连")
         self.win.toast(msg)
         if ok:
             self.code_edit.clear()
+            self._remember(tag)
         self.refresh()
 
     # ---------------------------------------------------------------- 启动
@@ -6413,7 +6545,13 @@ class ScrcpyDialog(QtWidgets.QDialog):
         if st != "ready":
             self.win.toast(snap["detail"])
             return
-        serial = snap["serials"][0] if snap["serials"] else ""
+        serial = ""
+        try:
+            serial = str(self.dev_combo.currentData() or "")
+        except Exception:  # noqa: BLE001
+            serial = ""
+        if not serial:
+            serial = snap["serials"][0] if snap["serials"] else ""
         self.start_btn.setEnabled(False)
         self.start_btn.setText("正在拉起…")
         opts = {
@@ -6430,6 +6568,7 @@ class ScrcpyDialog(QtWidgets.QDialog):
             self.start_btn.setText("开始投屏")
             self.win.toast("拉不起来：" + str(exc)[:60])
             return
+        self._remember()
         QTimer.singleShot(1200, self._after_launch)
 
     def _stop_cast(self) -> None:
@@ -8749,6 +8888,26 @@ class MacroDialog(QtWidgets.QDialog):
         srow.addWidget(b_save)
         lay.addLayout(srow)
 
+        # ---- 分享码：一条宏压成一段文字，发给朋友粘进去就是同一条 ----
+        crow = QtWidgets.QHBoxLayout()
+        crow.setSpacing(8)
+        b_copy = QtWidgets.QPushButton("复制分享码")
+        b_copy.setObjectName("Mini")
+        b_copy.setToolTip("把选中的这条宏压成一段 M1- 开头的码，发给朋友粘贴导入")
+        b_copy.clicked.connect(self._copy_code)
+        crow.addWidget(b_copy)
+        b_imp = QtWidgets.QPushButton("导入分享码")
+        b_imp.setObjectName("Mini")
+        b_imp.setToolTip("剪贴板里已经是码就直接导入；不是就弹窗让你粘")
+        b_imp.clicked.connect(self._import_code)
+        crow.addWidget(b_imp)
+        self.code_lab = QtWidgets.QLabel("宏也能像改枪码那样发：复制一段码，对面粘进去就是同一条")
+        self.code_lab.setObjectName("Small")
+        self.code_lab.setWordWrap(True)
+        self.code_lab.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        crow.addWidget(self.code_lab, 1)
+        lay.addLayout(crow)
+
         # ---- 回放参数 ----
         opt = QtWidgets.QHBoxLayout()
         opt.setSpacing(8)
@@ -8901,6 +9060,59 @@ class MacroDialog(QtWidgets.QDialog):
         ok, msg = macro.save_macro(name, self.rec.events)
         self.status.setText(msg)
         if ok:
+            self._reload()
+            i = self.macro_box.findData(name)
+            if i >= 0:
+                self.macro_box.setCurrentIndex(i)
+
+    # ---------------------------------------------------------------- 分享码
+    def _copy_code(self) -> None:
+        name = self.macro_box.currentData()
+        if not name:
+            self.status.setText("先在列表里选一条宏，再复制它的分享码")
+            return
+        data = macro.load_macro(name) or {}
+        events = data.get("events") or []
+        code = macro.code_encode(events)
+        if not code:
+            self.status.setText("这条宏压不出码来（事件是空的或者数据坏了）")
+            return
+        try:
+            QtWidgets.QApplication.clipboard().setText(code)
+            copied = True
+        except Exception:  # noqa: BLE001
+            copied = False
+        self.code_lab.setText(f"{name} 的分享码（{len(code)} 个字符）已就绪，"
+                              + ("在剪贴板里了，直接发给朋友。" if copied else "复制按钮没生效，选下面这段文字手动复制：")
+                              + code)
+
+    def _import_code(self) -> None:
+        clip = ""
+        try:
+            clip = QtWidgets.QApplication.clipboard().text().strip()
+        except Exception:  # noqa: BLE001
+            clip = ""
+        code = clip
+        if not macro.code_looks(code):
+            text, ok = QtWidgets.QInputDialog.getMultiLineText(
+                self, "导入分享码", "把对方发的那段 M1- 开头的码粘进来：", "")
+            if not ok:
+                return
+            code = text.strip()
+        events = macro.code_decode(code)
+        if not events:
+            self.status.setText("这个码认不出来：多半是抄漏了几个字符，或者根本不是宏分享码")
+            return
+        base = "导入 " + time.strftime("%m%d-%H%M")
+        name = base
+        n = 2
+        existing = set(macro.list_macros())
+        while name in existing:
+            name = f"{base}({n})"
+            n += 1
+        ok2, msg = macro.save_macro(name, events)
+        self.status.setText(msg if not ok2 else f"{msg}（{macro.describe(events)}）")
+        if ok2:
             self._reload()
             i = self.macro_box.findData(name)
             if i >= 0:
