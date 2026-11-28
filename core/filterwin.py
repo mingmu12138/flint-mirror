@@ -128,7 +128,62 @@ class FilterWindow(QtWidgets.QWidget):
         )
         self.btn_reset.clicked.connect(self._restore_now)
         top.addWidget(self.btn_reset)
+
+        # 分享码：像改枪码那样一串短码，复制给对方就能套同一套参数
+        self.btn_copy = QtWidgets.QPushButton("分享码")
+        self.btn_copy.setCursor(Qt.PointingHandCursor)
+        self.btn_copy.setFixedHeight(30)
+        self.btn_copy.setStyleSheet(
+            "QPushButton{padding:0 12px;border:1px solid rgba(120,255,228,.36);"
+            "border-radius:9px;font-size:12.5px;background:rgba(32,255,224,.10);color:#bffff4;}"
+            "QPushButton:hover{background:rgba(32,255,224,.20);}"
+        )
+        self.btn_copy.clicked.connect(self._copy_code)
+        top.addWidget(self.btn_copy)
+
+        self.btn_paste = QtWidgets.QPushButton("导入码")
+        self.btn_paste.setCursor(Qt.PointingHandCursor)
+        self.btn_paste.setFixedHeight(30)
+        self.btn_paste.setStyleSheet(
+            "QPushButton{padding:0 12px;border:1px solid rgba(255,255,255,.16);"
+            "border-radius:9px;font-size:12.5px;background:transparent;color:#d5e3ee;}"
+            "QPushButton:hover{background:rgba(255,255,255,.10);}"
+        )
+        self.btn_paste.clicked.connect(self._paste_code)
+        top.addWidget(self.btn_paste)
         return top
+
+    # ------------------------------------------------------------ 分享码
+    def _copy_code(self) -> None:
+        code = sf.code_encode(self._cfgs)
+        pretty = sf.code_pretty(code)
+        cb = QtWidgets.QApplication.clipboard()
+        if cb is not None:
+            cb.setText(code)
+        if hasattr(self, "tip_lbl"):
+            self.tip_lbl.setText(f"分享码已复制：{pretty}")
+
+    def _paste_code(self) -> None:
+        cb = QtWidgets.QApplication.clipboard()
+        text = (cb.text() if cb is not None else "") or ""
+        text = text.strip()
+        if not text:
+            text, ok = QtWidgets.QInputDialog.getText(self, "导入分享码", "粘贴对方的滤镜码：")
+            if not ok or not text.strip():
+                return
+        params = sf.code_decode(text)
+        if not params:
+            if hasattr(self, "tip_lbl"):
+                self.tip_lbl.setText("这个码不认，看看是不是抄漏了一位")
+            return
+        self._cfgs = params
+        self._preset = ""
+        self._clear_preset_checks()
+        self._sync_sliders()
+        if sf.is_active(self._dev):
+            self._apply_now()
+        if hasattr(self, "tip_lbl"):
+            self.tip_lbl.setText(f"已套用分享码 {sf.code_pretty(text)}")
 
     # ------------------------------------------------------------ 主体
     def _build_body(self) -> QtWidgets.QHBoxLayout:

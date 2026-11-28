@@ -61,7 +61,9 @@ check("exe 类型识别", Mod.from_dict({"path": "a.exe"}).kind == KIND_EXE)
 # 5. 界面与托盘
 win = gui.MainWindow(cfg, guard, guard)
 check("主窗口创建", win.width() > 0, f"{win.width()}x{win.height()}")
-check("模组卡片数量", len(win.cards) == len(cfg.mods), f"{len(win.cards)}/{len(cfg.mods)}")
+check("模组卡片数量",
+      (len(win.tiles) if cfg.view_mode == "grid" else len(win.cards)) == len(cfg.mods),
+      f"{len(win.tiles)}tile/{len(win.cards)}card/{len(cfg.mods)}")
 
 tray = gui.AppTray(win, guard, cfg)
 tray.rebuild()

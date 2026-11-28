@@ -59,18 +59,38 @@ KIND_LABEL = {
     KIND_PAGE: "内置",
 }
 
-# 推荐的第三方工具：(显示名, 官网地址, 直链下载地址)
+# 工具页的两个分组：游戏 / 实用（第三方工具下好之后就按这个归位，不另起一组）
+GROUP_GAME = "game"
+GROUP_UTIL = "util"
+
+# 没写 group 的老模组按名字猜：命中这些词算游戏，其余算实用
+_GAME_WORDS = ("steam", "epic", "pcl", "启动器", "我的世界", "minecraft",
+               "三角洲", "情报", "帧率", "画质", "加速器", "对战平台")
+
+
+def guess_group(name: str = "", kind: str = "", path: str = "") -> str:
+    """给没设置过分组的模组猜一个：内置页面看 key，其余看名字/路径。"""
+    if kind == KIND_PAGE:
+        return GROUP_GAME if (path or "").lower() == "delta" else GROUP_UTIL
+    text = f"{name or ''} {path or ''}".lower()
+    for word in _GAME_WORDS:
+        if word in text:
+            return GROUP_GAME
+    return GROUP_UTIL
+
+# 推荐的第三方工具：(显示名, 官网地址, 直链下载地址, 分组)
 # 直链空着 = 软件里只挂个官网入口，点格子在浏览器里打开；
 # 有直链 = 点「下载」直接在软件内下，下完自动补进工具列表。
+# 分组 = 工具页里该进哪一拨：game（游戏）/ util（实用）；下载完也用这个值归位
 RECOMMENDED_TOOLS = [
     ("Steam", "https://store.steampowered.com/",
-     "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe"),
-    ("图吧工具箱", "https://tbtool.co/", ""),
-    ("飞鼠格式", "https://flyingmouse-format.cn/", ""),
-    ("Epic Games", "https://www.epicgames.com/site/home/?lang=zh-CN", ""),
-    ("PCL2 启动器", "https://pcl.ruanmao.net/", ""),
-    ("KOOK", "https://www.kookapp.cn/", ""),
-    ("OOPZ", "https://oopz.cn/", ""),
+     "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe", GROUP_GAME),
+    ("图吧工具箱", "https://tbtool.co/", "", GROUP_UTIL),
+    ("飞鼠格式", "https://flyingmouse-format.cn/", "", GROUP_UTIL),
+    ("Epic Games", "https://www.epicgames.com/site/home/?lang=zh-CN", "", GROUP_GAME),
+    ("PCL2 启动器", "https://pcl.ruanmao.net/", "", GROUP_GAME),
+    ("KOOK", "https://www.kookapp.cn/", "", GROUP_UTIL),
+    ("OOPZ", "https://oopz.cn/", "", GROUP_UTIL),
 ]
 
 
@@ -116,6 +136,8 @@ class Mod:
     note: str = ""
     # 启动前延迟多少秒（有些工具需要等游戏先起来）
     delay: int = 0
+    # 工具页分组：game（游戏）/ util（实用）；空 = 老数据，界面上按名字猜
+    group: str = ""
 
     # ---------- 运行时 ----------
     pid: Optional[int] = None
@@ -166,6 +188,7 @@ class Mod:
             "autostart": bool(self.autostart),
             "note": self.note,
             "delay": int(self.delay),
+            "group": self.group,
         }
 
     @classmethod
@@ -183,6 +206,7 @@ class Mod:
             autostart=bool(d.get("autostart", False)),
             note=str(d.get("note") or ""),
             delay=int(d.get("delay") or 0),
+            group=str(d.get("group") or ""),
         )
 
 
@@ -607,6 +631,12 @@ class Config:
         self.audio_b: str = ""
         # 是否在任务栏单独放一个小喇叭图标（关掉就只从主托盘菜单 / 热键切）
         self.audio_tray_icon: bool = True
+        # 音乐播放器音量（0.0 ~ 1.0）：上次拖到哪，下次开程序还是哪
+        self.music_volume: float = 0.7
+        # 游戏模式偏好：记住用户想用的电源计划 / 分辨率，下次开模式直接套这一套
+        # gm_plan 空 = 走默认高性能；gm_res 空 = 不动分辨率
+        self.gm_plan: str = ""
+        self.gm_res: List[int] = []
         # 游戏服务器地址（可选）：测速时额外打这个，填 "host" 或 "host:端口"
         self.ping_host: str = ""
         # 悬浮窗贴哪一侧：left / right
@@ -705,6 +735,22 @@ class Config:
         self.replay_dir = str(raw.get("replay_dir", "") or "").strip()
         self.media_dir = str(raw.get("media_dir", "") or "").strip()
         self.audio_tray_icon = bool(raw.get("audio_tray_icon", True))
+        # 音量：0 是有效值（静音），所以不能写 int(raw.get(...) or 默认)，必须判 None
+        mv = raw.get("music_volume", None)
+        try:
+            mv = float(mv)
+        except (TypeError, ValueError):
+            mv = 0.7
+        self.music_volume = max(0.0, min(1.0, mv))
+        self.gm_plan = str(raw.get("gm_plan", "") or "").strip()[:64]
+        gres = raw.get("gm_res") or []
+        if isinstance(gres, (list, tuple)) and len(gres) >= 2:
+            try:
+                self.gm_res = [int(gres[0]), int(gres[1])]
+            except (TypeError, ValueError):
+                self.gm_res = []
+        else:
+            self.gm_res = []
         self.audio_a = str(raw.get("audio_a", "") or "").strip()
         self.audio_b = str(raw.get("audio_b", "") or "").strip()
         self.ping_host = str(raw.get("ping_host", "") or "").strip()
@@ -827,8 +873,20 @@ class Config:
         pos = raw.get("hud_pos") or []
         self.hud_pos = [int(pos[0]), int(pos[1])] if isinstance(pos, (list, tuple)) and len(pos) == 2 else []
         self._migrate_bundled()
+        self._fill_tool_groups()
         self._seed_recommended_tools()
         self.save()
+
+    def _fill_tool_groups(self) -> None:
+        """老配置里的模组都没存分组：按推荐清单认名字，认不出来就按关键词猜。
+
+        补过一次就写进配置，以后固定进那一拨，不再来回猜。
+        """
+        presets = {name: group for name, _url, _dl, group in RECOMMENDED_TOOLS}
+        for mod in self.mods:
+            if mod.group:
+                continue
+            mod.group = presets.get(mod.name) or guess_group(mod.name, mod.kind, mod.path)
 
     def _seed_recommended_tools(self) -> None:
         """把推荐的三方工具补进列表，只补一次。
@@ -839,7 +897,7 @@ class Config:
         if self.tools_seeded:
             return
         have = {(m.path or "").rstrip("/").lower() for m in self.mods if m.kind == KIND_REMOTE}
-        for name, url, dl in RECOMMENDED_TOOLS:
+        for name, url, dl, group in RECOMMENDED_TOOLS:
             if url.rstrip("/").lower() in have:
                 continue
             self.mods.append(
@@ -849,6 +907,7 @@ class Config:
                     path=url,
                     kind=KIND_REMOTE,
                     dl=dl,
+                    group=group,
                     enabled=True,
                 )
             )
@@ -911,6 +970,9 @@ class Config:
             mod.path = str(Path(exe))
             mod.kind = KIND_EXE
             mod.dl = ""
+            if not mod.group:
+                # 老数据没存过分组：按名字定下来，以后就固定进那一拨
+                mod.group = guess_group(mod.name, mod.kind, mod.path)
             changed.append(mod.name)
         return changed
 
@@ -990,6 +1052,9 @@ class Config:
             "audio_a": self.audio_a,
             "audio_b": self.audio_b,
             "audio_tray_icon": self.audio_tray_icon,
+            "music_volume": round(float(getattr(self, "music_volume", 0.7)), 4),
+            "gm_plan": getattr(self, "gm_plan", ""),
+            "gm_res": list(getattr(self, "gm_res", []) or []),
             "ping_host": self.ping_host,
             "hotkeys": dict(self.hotkeys),
             "close_to_tray": self.close_to_tray,

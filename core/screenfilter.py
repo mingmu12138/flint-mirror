@@ -195,3 +195,86 @@ def device_label(dev: str) -> str:
     except (ValueError, IndexError):
         return dev
     return "主显示器" if idx == 1 else f"第 {idx} 块屏"
+
+
+# ---------------------------------------------------------------------------
+# 分享码：把滑块压成一串能抄、能报的短码（像改枪码那种，不是长 JSON）
+#   格式：F1 + 17 位数字 + 1 位校验 = 20 位；显示时按 4 位一截
+#   字段：bright / contrast / gamma / scurve / temp / r / g / b
+# ---------------------------------------------------------------------------
+CODE_PREFIX = "F1"
+# (键, 下限, 上限, 步进, 位数)
+CODE_FIELD = (
+    ("bright", 0.55, 1.55, 0.01, 3),
+    ("contrast", 0.55, 1.55, 0.01, 3),
+    ("gamma", 0.50, 2.40, 0.01, 3),
+    ("scurve", 0.00, 0.30, 0.01, 2),
+    ("temp", 5000.0, 8000.0, 10.0, 3),
+)
+
+
+def _quant(v: float, lo: float, hi: float, step: float, width: int) -> str:
+    n = int(round((float(v) - lo) / step))
+    n = max(0, min(int(round((hi - lo) / step)), n))
+    return str(n).rjust(width, "0")
+
+
+def _dequant(text: str, lo: float, hi: float, step: float) -> float:
+    try:
+        n = int(text)
+    except (TypeError, ValueError):
+        return lo
+    return max(lo, min(hi, lo + n * step))
+
+
+def _gain_digit(v: float) -> str:
+    """三通道增益压成一位：0.95~1.04 → 0~9，超出夹住。"""
+    n = int(round((float(v) - 0.95) / 0.01))
+    return str(max(0, min(9, n)))
+
+
+def _check_digit(body: str) -> str:
+    return str(sum(int(ch) for ch in body) % 10)
+
+
+def code_clean(code: str) -> str:
+    """只留字母数字并转大写：用户抄进来的空格、横线、小写都容忍。"""
+    return "".join(ch for ch in str(code or "").upper() if ch.isalnum())
+
+
+def code_encode(params: Dict[str, float]) -> str:
+    """参数 → 分享码（20 位，含 F1 前缀）。"""
+    p = dict(DEFAULT)
+    p.update({k: v for k, v in (params or {}).items() if k in DEFAULT})
+    body = "".join(_quant(p[k], lo, hi, step, w) for k, lo, hi, step, w in CODE_FIELD)
+    body += _gain_digit(p["r"]) + _gain_digit(p["g"]) + _gain_digit(p["b"])
+    body += _check_digit(body)
+    return CODE_PREFIX + body
+
+
+def code_pretty(code: str) -> str:
+    """4 位一截，好念好抄。"""
+    text = code_clean(code)
+    return "-".join(text[i:i + 4] for i in range(0, len(text), 4))
+
+
+def code_decode(code: str) -> Optional[Dict[str, float]]:
+    """分享码 → 参数字典。认不出来一律返回 None，不去猜。"""
+    text = code_clean(code)
+    if text.startswith(CODE_PREFIX):
+        text = text[len(CODE_PREFIX):]
+    if len(text) != 18 or not text.isdigit():
+        return None
+    if text[-1] != _check_digit(text[:-1]):
+        return None
+    body = text[:-1]
+    out = dict(DEFAULT)
+    pos = 0
+    for key, lo, hi, step, _w in CODE_FIELD:
+        width = int(_w)
+        out[key] = _dequant(body[pos:pos + width], lo, hi, step)
+        pos += width
+    out["r"] = 0.95 + int(body[pos]) * 0.01
+    out["g"] = 0.95 + int(body[pos + 1]) * 0.01
+    out["b"] = 0.95 + int(body[pos + 2]) * 0.01
+    return out

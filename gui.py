@@ -30,7 +30,7 @@ from core import (ace, artwork, audioout, automation, cacheclean, crosshair, cap
                     musicapi, qqmusic, kugou, kuwo,
                     daily_hud, df_intel, display, fps,
                     clipboard_lan, fps_hud, ipc, netspeed, power, recorder, replay, scaling, spec,
-                    startup, steamaccount, steamlib, steamnames, store, sysmon, theme,
+                    startup, steamaccount, steamlib, steamnames, storage, store, sysmon, theme,
                     traypin, wupdate, musicbar, screenfilter, filterwin, scrcpy_tool, stats)
 from core import player as mplayer
 from core.hotkey import (
@@ -102,7 +102,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.11.1"
+APP_VERSION = "v1.12.0"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -4523,6 +4523,142 @@ class SettingsDialog(QtWidgets.QDialog):
                 lb.setStyleSheet("color:#79c3b9; font-size:11px;")
                 lb.setToolTip("")
 
+    # ---------- 游戏模式偏好 ----------
+    def _refresh_gm_pref(self) -> None:
+        if not hasattr(self, "gm_pref_info"):
+            return
+        plan = str(getattr(self.cfg, "gm_plan", "") or "").strip()
+        plan_txt = "没记（默认高性能）"
+        if plan:
+            try:
+                names = {g.lower(): n for g, n, _a in power.list_plans()}
+                plan_txt = names.get(plan.lower(), plan[:8] + "…")
+            except Exception:  # noqa: BLE001
+                plan_txt = plan[:8] + "…"
+        res = list(getattr(self.cfg, "gm_res", []) or [])
+        res_txt = f"{res[0]} × {res[1]}" if len(res) >= 2 else "没记（不动分辨率）"
+        self.gm_pref_info.setText(f"电源计划：{plan_txt}　·　分辨率：{res_txt}")
+
+    def _remember_gm_plan(self) -> None:
+        guid = ""
+        try:
+            if hasattr(self.win, "_gm_active_plan"):
+                guid = self.win._gm_active_plan()
+            else:
+                guid = power.current()[0]
+        except Exception:  # noqa: BLE001
+            guid = ""
+        if not guid:
+            self.win.toast("读不到当前电源计划", False)
+            return
+        self.cfg.gm_plan = str(guid)
+        try:
+            self.cfg.save()
+        except Exception:  # noqa: BLE001
+            pass
+        self._refresh_gm_pref()
+        self.win.toast("记住这套电源计划了")
+
+    def _remember_gm_res(self) -> None:
+        try:
+            cur = display.get_current()
+        except Exception:  # noqa: BLE001
+            cur = None
+        if not cur:
+            self.win.toast("读不到当前分辨率", False)
+            return
+        self.cfg.gm_res = [int(cur[0]), int(cur[1])]
+        try:
+            self.cfg.save()
+        except Exception:  # noqa: BLE001
+            pass
+        self._refresh_gm_pref()
+        self.win.toast(f"记住 {cur[0]}×{cur[1]} 了")
+
+    def _clear_gm_pref(self) -> None:
+        self.cfg.gm_plan = ""
+        self.cfg.gm_res = []
+        try:
+            self.cfg.save()
+        except Exception:  # noqa: BLE001
+            pass
+        self._refresh_gm_pref()
+        self.win.toast("偏好清空了，以后按默认来")
+
+    # ---------- 存储占用 ----------
+    def _refresh_storage(self) -> None:
+        """重算一遍：总数、每一项的数字、按钮上写能释放多少。"""
+        if not hasattr(self, "store_rows_box"):
+            return
+        while self.store_rows_box.count():
+            item = self.store_rows_box.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        rows = storage.scan(self.cfg)
+        self.store_info.setText(storage.total_text(self.cfg))
+        for r in rows:
+            w = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(8)
+            lb = QtWidgets.QLabel(f"{r['label']} · {storage.human(r['size'])}")
+            lb.setObjectName("Small")
+            lb.setMinimumWidth(205)
+            h.addWidget(lb)
+            note = QtWidgets.QLabel(r["note"] if r["exists"] else "还没有")
+            note.setObjectName("Small")
+            note.setStyleSheet("color:#69737f; border:none; background:transparent;")
+            h.addWidget(note, 1)
+            if r["exists"]:
+                b = QtWidgets.QPushButton("打开")
+                b.setObjectName("Ghost")
+                b.setFixedHeight(24)
+                b.clicked.connect(lambda _c=False, p=r["path"]: self._open_store_path(p))
+                h.addWidget(b)
+            self.store_rows_box.addWidget(w)
+        will = storage.cleanable_size(rows, self.cfg)
+        self.btn_store_clean.setEnabled(will > 0)
+        self.btn_store_clean.setText(
+            f"清理缓存（{storage.human(will)}）" if will > 0 else "清理缓存（没有可清的）"
+        )
+
+    def _open_store_path(self, path: str) -> None:
+        p = Path(path)
+        try:
+            if p.is_dir():
+                os.startfile(str(p))
+            elif p.exists():
+                # 单个文件：打开所在文件夹并选中它，别用默认程序去开
+                subprocess.Popen(["explorer", "/select,", str(p)])
+            else:
+                self.win.toast("这个位置还没有东西", False)
+        except Exception as exc:  # noqa: BLE001
+            self.win.toast(f"打不开：{exc}", False)
+
+    def _clean_storage(self) -> None:
+        rows = storage.scan(self.cfg)
+        will = storage.cleanable_size(rows, self.cfg)
+        if will <= 0:
+            self.win.toast("已经没有可以清的东西了")
+            return
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "清理缓存",
+            f"会删掉官网图标缓存和日志，共 {storage.human(will)}。\n"
+            "素材、录屏成品、回放缓冲、配置和模组都不动。\n\n继续吗？",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No,
+        )
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+        freed, removed, skipped = storage.clean(self.cfg)
+        self._refresh_storage()
+        if skipped:
+            self.win.toast(f"清掉 {storage.human(freed)}；{len(set(skipped))} 个文件正在占用，下次再清")
+        else:
+            self.win.toast(f"清掉 {storage.human(freed)}（{removed} 个文件）")
+
     def _fill_skin_rows(self) -> None:
         lay = self._skin_rows
         while lay.count():
@@ -5102,6 +5238,61 @@ class SettingsDialog(QtWidgets.QDialog):
         hint_ping.setObjectName("Small")
         hint_ping.setWordWrap(True)
         lay.addWidget(hint_ping)
+
+        # ---------- 存储占用 ----------
+        lay.addWidget(self._group("存储（燧镜自己占了多少，清得掉什么）"))
+        self.store_info = QtWidgets.QLabel("")
+        self.store_info.setObjectName("Small")
+        self.store_info.setWordWrap(True)
+        lay.addWidget(self.store_info)
+
+        self.store_rows_box = QtWidgets.QVBoxLayout()
+        self.store_rows_box.setContentsMargins(0, 0, 0, 0)
+        self.store_rows_box.setSpacing(3)
+        lay.addLayout(self.store_rows_box)
+
+        store_row = QtWidgets.QHBoxLayout()
+        store_row.setSpacing(8)
+        self.btn_store_clean = QtWidgets.QPushButton("清理缓存")
+        self.btn_store_clean.setObjectName("Ghost")
+        self.btn_store_clean.clicked.connect(self._clean_storage)
+        store_row.addWidget(self.btn_store_clean)
+        hint_store = QtWidgets.QLabel("只清图标缓存和日志；素材、录制、回放、配置都不动")
+        hint_store.setObjectName("Small")
+        store_row.addWidget(hint_store)
+        store_row.addStretch(1)
+        lay.addLayout(store_row)
+
+        self._refresh_storage()
+
+        # ---------- 游戏模式偏好 ----------
+        lay.addWidget(self._group("游戏模式偏好（开模式时套用 · 关模式时放回）"))
+        self.gm_pref_info = QtWidgets.QLabel("")
+        self.gm_pref_info.setObjectName("Small")
+        self.gm_pref_info.setWordWrap(True)
+        lay.addWidget(self.gm_pref_info)
+
+        gm_row = QtWidgets.QHBoxLayout()
+        gm_row.setSpacing(8)
+        self.btn_gm_plan = QtWidgets.QPushButton("记住当前电源计划")
+        self.btn_gm_plan.setObjectName("Ghost")
+        self.btn_gm_plan.clicked.connect(self._remember_gm_plan)
+        gm_row.addWidget(self.btn_gm_plan)
+        self.btn_gm_res = QtWidgets.QPushButton("记住当前分辨率")
+        self.btn_gm_res.setObjectName("Ghost")
+        self.btn_gm_res.clicked.connect(self._remember_gm_res)
+        gm_row.addWidget(self.btn_gm_res)
+        self.btn_gm_clear = QtWidgets.QPushButton("清空偏好")
+        self.btn_gm_clear.setObjectName("Ghost")
+        self.btn_gm_clear.clicked.connect(self._clear_gm_pref)
+        gm_row.addWidget(self.btn_gm_clear)
+        gm_row.addStretch(1)
+        lay.addLayout(gm_row)
+
+        hint_gm = QtWidgets.QLabel("不记也能用：默认进模式切高性能电源、不动分辨率")
+        hint_gm.setObjectName("Small")
+        lay.addWidget(hint_gm)
+        self._refresh_gm_pref()
 
         lay = lay_display
         tip_display = QtWidgets.QLabel(
@@ -9447,7 +9638,9 @@ class MiniPlayer(QtWidgets.QFrame):
 
         self.vol = QtWidgets.QSlider(Qt.Horizontal)
         self.vol.setRange(0, 100)
-        self.vol.setValue(70)
+        vol0 = max(0, min(100, int(round(
+            float(getattr(self.win.cfg, "music_volume", 0.7)) * 100))))
+        self.vol.setValue(vol0)
         self.vol.setFixedHeight(16)
         self.vol.setCursor(Qt.PointingHandCursor)
         self.vol.setToolTip("音量：拖一下或滚轮调")
@@ -9466,7 +9659,7 @@ class MiniPlayer(QtWidgets.QFrame):
         self.vol.sliderReleased.connect(self._vol_up)
         vrow.addWidget(self.vol, 1)
 
-        self.vol_pct = QtWidgets.QLabel("70%")
+        self.vol_pct = QtWidgets.QLabel("%d%%" % vol0)
         self.vol_pct.setFixedWidth(34)
         self.vol_pct.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.vol_pct.setStyleSheet("font-size:10px;color:#8496a8;background:transparent;")
@@ -9535,11 +9728,21 @@ class MiniPlayer(QtWidgets.QFrame):
         self.vol_pct.setText("%d%%" % int(v))
         if self.player is not None:
             self.player.set_volume(int(v) / 100.0)
+        self._save_volume(int(v) / 100.0)
 
     def _vol_up(self) -> None:
         self._vol_drag = False
+        v = self.vol.value() / 100.0
         if self.player is not None:
-            self.player.set_volume(self.vol.value() / 100.0)
+            self.player.set_volume(v)
+        self._save_volume(v)
+
+    def _save_volume(self, v: float) -> None:
+        """记住这次拖到的音量（写配置交给主窗口防抖处理）。"""
+        try:
+            self.win.set_music_volume(v)
+        except Exception:  # noqa: BLE001
+            pass
 
     def wheelEvent(self, ev) -> None:  # noqa: N802
         # 展开态：在音量那一行滚一下就能调，不用非得去抠滑块
@@ -10834,7 +11037,9 @@ class MusicPage(QtWidgets.QWidget):
 
         self.vol = QtWidgets.QSlider(Qt.Horizontal)
         self.vol.setRange(0, 100)
-        self.vol.setValue(int(70))
+        vol0 = max(0, min(100, int(round(
+            float(getattr(self.win.cfg, "music_volume", 0.7)) * 100))))
+        self.vol.setValue(vol0)
         self.vol.setFixedWidth(64)
         self.vol.setToolTip("音量")
         self.vol.valueChanged.connect(self._on_vol)
@@ -11350,6 +11555,10 @@ class MusicPage(QtWidgets.QWidget):
     def _on_vol(self, v: int) -> None:
         if self.player is not None:
             self.player.set_volume(v / 100.0)
+        try:
+            self.win.set_music_volume(v / 100.0)
+        except Exception:  # noqa: BLE001
+            pass
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
@@ -11477,6 +11686,11 @@ class MainWindow(QtWidgets.QWidget):
         self.player = mplayer.Player(self.music_api, self)
         self.player.api_map = {"ny": self.music_api, "qq": self.qq_api,
                                "kg": self.kg_api, "kw": self.kw_api}
+        # 音量接着上次的来（播放器自己默认 0.7，配置里有值就盖掉）
+        try:
+            self.player.set_volume(float(getattr(self.cfg, "music_volume", 0.7)))
+        except Exception:  # noqa: BLE001
+            pass
 
         self._build_ui()
         self._art_tinted = None
@@ -12340,6 +12554,13 @@ class MainWindow(QtWidgets.QWidget):
             flow.addWidget(tile)
         return page
 
+    def _mod_group(self, mod) -> str:
+        """这条应该进哪一拨：自己存过分组就用存的，没存就按名字猜。"""
+        g = str(getattr(mod, "group", "") or "").strip().lower()
+        if g in (store.GROUP_GAME, store.GROUP_UTIL):
+            return g
+        return store.guess_group(mod.name, mod.kind, mod.path)
+
     def rebuild_mods(self) -> None:
         while self.mod_root.count():
             item = self.mod_root.takeAt(0)
@@ -12354,6 +12575,13 @@ class MainWindow(QtWidgets.QWidget):
         local = [m for m in self.cfg.mods if m.kind != KIND_REMOTE]
         remote = [m for m in self.cfg.mods if m.kind == KIND_REMOTE]
 
+        # 工具页固定两拨：游戏 / 实用；第三方工具下好之后按自己的分组归位，
+        # 没下载的那一排单独放最后，不再另起第三拨
+        buckets = (
+            (store.GROUP_GAME, "游戏", "开黑用 · 启动器 / 情报 / 加速"),
+            (store.GROUP_UTIL, "实用", "日常顺手 · 语音 / 工具箱 / 格式"),
+        )
+
         if self.cfg.view_mode == "grid":
             if not self.cfg.mods:
                 page = FlowPage()
@@ -12362,15 +12590,18 @@ class MainWindow(QtWidgets.QWidget):
                 flow.addWidget(self._make_empty())
                 self.mod_root.addWidget(page, 0, Qt.AlignTop)
             else:
-                if local:
-                    self.mod_root.addWidget(self._grid_group(local), 0, Qt.AlignTop)
+                for key, title, hint in buckets:
+                    bucket = [m for m in local if self._mod_group(m) == key]
+                    if not bucket:
+                        continue
+                    self.mod_root.addWidget(self._group_head(title, hint), 0, Qt.AlignTop)
+                    self.mod_root.addWidget(self._grid_group(bucket), 0, Qt.AlignTop)
                 if remote:
-                    if local:
-                        self.mod_root.addWidget(
-                            self._group_head("三方工具", "没下载 · 点一格去官网"),
-                            0,
-                            Qt.AlignTop,
-                        )
+                    self.mod_root.addWidget(
+                        self._group_head("三方工具", "没下载 · 点一格去官网"),
+                        0,
+                        Qt.AlignTop,
+                    )
                     self.mod_root.addWidget(self._grid_group(remote), 0, Qt.AlignTop)
         else:
             page = QtWidgets.QWidget()
@@ -12380,14 +12611,18 @@ class MainWindow(QtWidgets.QWidget):
             if not self.cfg.mods:
                 col.addWidget(self._make_empty())
             else:
-                for mod in local:
-                    card = ModCard(mod, self.guard, self.cfg, self)
-                    card.changed.connect(self._on_mods_changed)
-                    self.cards.append(card)
-                    col.addWidget(card)
+                for key, title, hint in buckets:
+                    bucket = [m for m in local if self._mod_group(m) == key]
+                    if not bucket:
+                        continue
+                    col.addWidget(self._group_head(title, hint))
+                    for mod in bucket:
+                        card = ModCard(mod, self.guard, self.cfg, self)
+                        card.changed.connect(self._on_mods_changed)
+                        self.cards.append(card)
+                        col.addWidget(card)
                 if remote:
-                    if local:
-                        col.addWidget(self._group_head("三方工具", "没下载 · 点卡片去官网"))
+                    col.addWidget(self._group_head("三方工具", "没下载 · 点卡片去官网"))
                     for mod in remote:
                         card = ModCard(mod, self.guard, self.cfg, self)
                         card.changed.connect(self._on_mods_changed)
@@ -13768,8 +14003,26 @@ class MainWindow(QtWidgets.QWidget):
             if plan:
                 self._gm_plan = plan
                 high = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"  # 高性能
-                if plan.lower() != high and self._gm_set_plan(high):
-                    notes.append("已切高性能电源")
+                # 用户记下的那套计划优先，没记过才走高性能
+                want = str(getattr(self.cfg, "gm_plan", "") or "").strip() or high
+                if plan.lower() != want.lower() and self._gm_set_plan(want):
+                    notes.append("电源已切" + ("回你记下的计划" if want != high else "高性能"))
+            # 分辨率偏好：记过就在进模式时直接套，关模式会放回原来的
+            res = list(getattr(self.cfg, "gm_res", []) or [])
+            if len(res) >= 2 and res[0] and res[1]:
+                cur = None
+                try:
+                    cur = display.get_current()
+                except Exception:  # noqa: BLE001
+                    cur = None
+                if cur and (int(cur[0]), int(cur[1])) != (int(res[0]), int(res[1])):
+                    self._gm_res = (int(cur[0]), int(cur[1]))
+                    if display.set_resolution(int(res[0]), int(res[1]))[0]:
+                        notes.append(f"分辨率 {res[0]}×{res[1]}")
+                        try:
+                            self.refresh_resolution()
+                        except Exception:  # noqa: BLE001
+                            pass
             self.toast("游戏模式已开：" + ("、".join(notes) if notes else "这台机器没什么好省的"))
         else:
             self._gm_restore()
@@ -13838,6 +14091,14 @@ class MainWindow(QtWidgets.QWidget):
         if plan:
             self._gm_plan = None
             self._gm_set_plan(plan)
+        res = getattr(self, "_gm_res", None)
+        if res:
+            self._gm_res = None
+            try:
+                display.set_resolution(int(res[0]), int(res[1]))
+                self.refresh_resolution()
+            except Exception:  # noqa: BLE001
+                pass
         self._gm_on = False
         self._gm_brand_switch(False)
 
@@ -14289,6 +14550,27 @@ class MainWindow(QtWidgets.QWidget):
                 self.crosshair.show_cross()
             else:
                 self.crosshair.hide_cross()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def set_music_volume(self, v: float) -> None:
+        """记住音乐音量：拖滑块时高频调用，写盘走防抖，别每跳都存一次。"""
+        try:
+            v = max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return
+        self.cfg.music_volume = v
+        t = getattr(self, "_vol_save_timer", None)
+        if t is None:
+            t = QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(self._save_music_volume)
+            self._vol_save_timer = t
+        t.start(900)
+
+    def _save_music_volume(self) -> None:
+        try:
+            self.cfg.save()
         except Exception:  # noqa: BLE001
             pass
 
