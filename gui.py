@@ -103,7 +103,7 @@ from core.store import (
 
 APP_NAME = "燧镜"
 APP_NAME_EN = "FLINT MIRROR"
-APP_VERSION = "v1.12.6"
+APP_VERSION = "v1.12.7"
 APP_AUTHOR = "布鲁托是小馋猫"
 
 # ---------------------------------------------------------------------------
@@ -1635,6 +1635,17 @@ class AddRemoteDialog(QtWidgets.QDialog):
 # 关于
 # ---------------------------------------------------------------------------
 CHANGELOG = [
+    (
+        "2026-11-28 · v1.12.7",
+        [
+            "修：投屏面板的字挤在一起了 —— 「画质 / 帧率上限」「录屏 / 虚拟屏 / 摄像头 / 不转声音」"
+            "「镜头 / 方向 / 手电筒」这三行末尾都挂着一长句提示，窗口一窄就被压得叠在一起、下拉框还挤出边界。"
+            "现在提示各自挪到下一行，三行只剩控件本身，怎么缩窗口都不会撞",
+            "修：开虚拟屏时手机屏幕是黑的、根本没法操作 —— 原来非摄像头分支一律加了 --turn-screen-off。"
+            "虚拟屏是另开一块副屏，手机主屏本来就该留着能用；现在虚拟屏只加 --stay-awake，不熄屏。"
+            "普通投屏还是照原来的熄屏",
+        ],
+    ),
     (
         "2026-11-28 · v1.12.6",
         [
@@ -6362,10 +6373,12 @@ class ScrcpyDialog(QtWidgets.QDialog):
         qh.addWidget(self.fps_combo)
 
         qh.addStretch(1)
-        hint = QtWidgets.QLabel("手机屏幕会物理熄灭，电脑上照常看")
-        hint.setObjectName("Hint")
-        qh.addWidget(hint)
         qv.addLayout(qh)
+        # 这行提示单独占一行：塞在「画质 / 帧率」同一行时，窗口一窄就把下拉挤出边界
+        self.quality_hint = QtWidgets.QLabel("手机屏幕会物理熄灭，电脑上照常看")
+        self.quality_hint.setObjectName("Hint")
+        self.quality_hint.setWordWrap(True)
+        qv.addWidget(self.quality_hint)
 
         qrow = QtWidgets.QHBoxLayout()
         qrow.setSpacing(12)
@@ -6386,10 +6399,12 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.chk_mute.setToolTip("手机声音不往电脑送（在用「手机音频接收」那套时可以勾，免得两边抢）")
         qrow.addWidget(self.chk_mute)
         qrow.addStretch(1)
+        qv.addLayout(qrow)
+
         drag_hint = QtWidgets.QLabel("拖文件进投屏窗口 = 直接推到手机 Download")
         drag_hint.setObjectName("Hint")
-        qrow.addWidget(drag_hint)
-        qv.addLayout(qrow)
+        drag_hint.setWordWrap(True)
+        qv.addWidget(drag_hint)
 
         # ---- 虚拟屏里开什么（只有勾了虚拟屏才出现） ----
         self.virt_row = QtWidgets.QWidget()
@@ -6420,8 +6435,11 @@ class ScrcpyDialog(QtWidgets.QDialog):
 
         # ---- 手机摄像头（勾了就不投屏幕，改投摄像头） ----
         self.cam_row = QtWidgets.QWidget()
-        cr = QtWidgets.QHBoxLayout(self.cam_row)
-        cr.setContentsMargins(0, 2, 0, 0)
+        cv = QtWidgets.QVBoxLayout(self.cam_row)
+        cv.setContentsMargins(0, 2, 0, 0)
+        cv.setSpacing(6)
+        # 控件一行、说明单独一行：四个控件 + 一长句挤在同一行会互相压住
+        cr = QtWidgets.QHBoxLayout()
         cr.setSpacing(6)
         cr.addWidget(QtWidgets.QLabel("用哪颗镜头："))
         self.cam_face = QtWidgets.QComboBox()
@@ -6444,9 +6462,15 @@ class ScrcpyDialog(QtWidgets.QDialog):
         self.chk_torch.setToolTip("摄像头模式独有的，照亮用；只在投摄像头期间亮，关窗口就灭")
         cr.addWidget(self.chk_torch)
         cr.addStretch(1)
-        cam_hint = QtWidgets.QLabel("原始画面，没有手机自带的美颜/夜景算法；会自动帮你点亮手机屏幕")
-        cam_hint.setObjectName("Hint")
-        cr.addWidget(cam_hint)
+        cv.addLayout(cr)
+
+        # 想镜像也只能走快捷键，面板上不摆做不到的开关
+        self.cam_hint = QtWidgets.QLabel(
+            "原始画面，没有手机自带的美颜 / 夜景 / HDR 算法；投摄像头期间自动帮手机保持亮屏"
+        )
+        self.cam_hint.setObjectName("Hint")
+        self.cam_hint.setWordWrap(True)
+        cv.addWidget(self.cam_hint)
         self.cam_row.setVisible(False)
         qv.addWidget(self.cam_row)
 
@@ -6671,6 +6695,11 @@ class ScrcpyDialog(QtWidgets.QDialog):
     def _on_virtual_toggled(self, on: bool) -> None:
         try:
             self.virt_row.setVisible(bool(on) and not self.chk_camera.isChecked())
+            # 虚拟屏是另开副屏，手机主屏保持亮着能用；普通投屏才熄屏
+            if bool(on):
+                self.quality_hint.setText("虚拟屏模式：手机主屏不熄灭、照常能用；电脑上那块是另开的副屏")
+            else:
+                self.quality_hint.setText("手机屏幕会物理熄灭，电脑上照常看")
         except Exception:  # noqa: BLE001
             pass
 

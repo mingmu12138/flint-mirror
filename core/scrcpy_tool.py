@@ -397,7 +397,12 @@ def build_args(serial: str = "", quality: str = "normal", fps: int = 0, record: 
             args.append("--angle=%d" % (int(camera_angle) % 360))
         args.append("--no-audio")
     else:
-        args += ["--turn-screen-off", "--stay-awake"]
+        if virtual:
+            # 虚拟屏是「另开一块副屏」，手机主屏得留着能操作 —— 这里只保持唤醒，
+            # 不能加 --turn-screen-off，否则手机上看着就是黑屏，跟普通投屏没区别。
+            args.append("--stay-awake")
+        else:
+            args += ["--turn-screen-off", "--stay-awake"]
         if virtual:
             nd = "--new-display"
             if virtual_size:
